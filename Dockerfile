@@ -17,5 +17,5 @@ COPY backend/ .
 EXPOSE 8000
 
 # Command to run the application
-# Fly.io defaults to port 8080
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Hugging Face Spaces default to port 7860
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}"]
