@@ -1,3 +1,4 @@
+# Deployment: 2026-04-30
 from fastapi import FastAPI
 from api import sync
 from database.session import init_db
