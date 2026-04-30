@@ -1,7 +1,13 @@
 from fastapi import FastAPI
 from api import sync
+from database.session import init_db
 
 app = FastAPI(title="BNC Attendance Central API")
+
+@app.on_event("startup")
+def on_startup():
+    print("Initializing database...")
+    init_db()
 
 app.include_router(sync.router, prefix="/api/v1/sync", tags=["sync"])
 
