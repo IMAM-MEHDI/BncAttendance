@@ -17,5 +17,5 @@ COPY backend/ .
 EXPOSE 8000
 
 # Command to run the application
-# We use the PORT environment variable provided by Render
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Fly.io defaults to port 8080
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
