@@ -1,0 +1,28 @@
+{
+    "version": "1.0.0",
+    "theme": {
+        "midnight": "#0f172a",
+        "slate_navy": "#1e293b",
+        "sky_blue": "#38bdf8",
+        "sky_blue_hover": "#7dd3fc",
+        "text_slate": "#94a3b8",
+        "text_light_slate": "#f1f5f9",
+        "border_slate": "#334155",
+        "success": "#10b981",
+        "success_hover": "#34d399",
+        "danger": "#ef4444",
+        "danger_hover": "#f87171",
+        "white_bg": "#ffffff",
+        "slate_card": "#f8fafc"
+    },
+    "kiosk": {
+        "auto_mark_delay": 10,
+        "default_camera_index": 0
+    },
+    "sync": {
+        "timer_interval_ms": 300000
+    },
+    "network": {
+        "timeout_seconds": 5
+    }
+}

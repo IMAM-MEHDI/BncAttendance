@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+.env
+
+# IDEs
+.vscode/
+.idea/
+
+# App Specific
+desktop_app/scratch/
+*.log
+*.pdf
+desktop_app/assets/attendance_reports/
+*.db
+*.spec
+build/
+dist/
+*.exe
+BNC_Attendance_Setup.exe

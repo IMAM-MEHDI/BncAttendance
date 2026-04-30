@@ -1,0 +1,16 @@
+torch
+torchvision
+facenet-pytorch
+opencv-python
+numpy
+PyQt6
+SQLAlchemy
+psycopg2
+fastapi
+uvicorn
+pydantic
+python-dotenv
+requests
+fpdf2
+bcrypt
+packaging
