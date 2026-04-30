@@ -4,19 +4,18 @@ FROM python:3.12-slim
 # Set working directory to /app
 WORKDIR /app
 
-# Copy the backend folder and requirements
-COPY backend/ /app/backend/
-COPY backend/requirements.txt /app/
+# Copy the backend requirements first for caching
+COPY backend/requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set environment variable to ensure imports work from the backend directory
-ENV PYTHONPATH=/app/backend
+# Copy the entire backend folder content into the current WORKDIR (/app)
+COPY backend/ .
 
-# Expose the port FastAPI runs on
+# Expose the default port
 EXPOSE 8000
 
 # Command to run the application
-# We run it from the backend directory so internal imports work
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# We use the PORT environment variable provided by Render
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
