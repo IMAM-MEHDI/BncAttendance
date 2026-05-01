@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 class AttendanceRecordBase(BaseModel):
@@ -7,6 +7,7 @@ class AttendanceRecordBase(BaseModel):
     device_id: str
     timestamp: datetime
     confidence: float
+    routine_id: Optional[int] = None
 
 class SyncRequest(BaseModel):
     records: List[AttendanceRecordBase]

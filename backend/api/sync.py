@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Annotated
 from database.session import SessionLocal
-from schemas.sync import SyncRequest, MasterDataRequest
+from schemas.sync import (
+    SyncRequest, MasterDataRequest, DeleteUserRequest, 
+    UserUpsertRequest, RoutineUpsertRequest, DeleteRoutineRequest
+)
 from database import models
 import bcrypt
 

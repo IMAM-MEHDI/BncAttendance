@@ -47,7 +47,7 @@ def sync_data():
     finally:
         db.close()
 
-def delete_user_from_cloud(admin_enroll, admin_pass, target_enroll):
+def delete_user_cloud(admin_enroll, admin_pass, target_enroll):
     """Notify backend to delete a user from cloud."""
     try:
         base_url = BACKEND_URL.rstrip("/")

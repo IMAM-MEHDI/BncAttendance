@@ -10,7 +10,8 @@ from PyQt6 import sip
 from PyQt6.QtWidgets import (QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, 
                              QMessageBox, QTabWidget, QLineEdit, QFormLayout, QHBoxLayout,
                              QStackedWidget, QTableWidget, QTableWidgetItem, QComboBox,
-                             QScrollArea, QFrame, QMenuBar, QMenu, QStatusBar, QToolBar)
+                             QScrollArea, QFrame, QMenuBar, QMenu, QStatusBar, QToolBar,
+                             QHeaderView)
 from PyQt6.QtCore import pyqtSignal, QThread, Qt, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QFont, QIcon, QAction
 
@@ -273,7 +274,7 @@ class MainWindow(QMainWindow):
             
             QPushButton#SuccessBtn {{
                 background-color: #10b981;
-                color: #ffffff;
+                color: #000000;
                 border-radius: 12px;
                 padding: 12px;
                 font-weight: 800;
@@ -654,7 +655,11 @@ class MainWindow(QMainWindow):
         btn_manage_staff.clicked.connect(self.manage_staff_dialog)
         s_container.addWidget(btn_manage_staff)
         
-        btn_reg_staff = QPushButton("Register New Staff"); btn_reg_staff.setObjectName("SuccessBtn"); btn_reg_staff.setMinimumHeight(50); btn_reg_staff.clicked.connect(self.register_staff)
+        btn_reg_staff = QPushButton("REGISTER NEW STAFF MEMBER")
+        btn_reg_staff.setObjectName("SuccessBtn")
+        btn_reg_staff.setStyleSheet("color: black;")
+        btn_reg_staff.setMinimumHeight(50)
+        btn_reg_staff.clicked.connect(self.register_staff)
         s_container.addWidget(btn_reg_staff)
         
         # Cloud Sync Tab
@@ -856,7 +861,8 @@ class MainWindow(QMainWindow):
         form.addRow(QLabel("Department:"), self.promo_dept)
         info_layout.addWidget(form_widget)
         
-        btn_promote = QPushButton(" EXECUTE SEMESTER PROMOTION")
+        btn_promote = QPushButton("EXECUTE SEMESTER PROMOTION")
+        btn_promote.setObjectName("PrimaryBtn")
         btn_promote.setObjectName("DangerBtn")
         btn_promote.setMinimumHeight(55)
         btn_promote.clicked.connect(self.execute_promotion)
@@ -924,8 +930,33 @@ class MainWindow(QMainWindow):
         # Live Monitor
         self.monitor_frame = QFrame(); self.monitor_frame.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 15px; border: 1px solid #dcdde1;")
         m_layout = QVBoxLayout(self.monitor_frame)
-        self.monitor_table = QTableWidget(0, 5); self.monitor_table.setHorizontalHeaderLabels(["Image", "Enrollment", "Name", "Time", "Status"])
-        m_layout.addWidget(QLabel("Live Attendance Monitor:")); m_layout.addWidget(self.monitor_table)
+        
+        m_header_layout = QHBoxLayout()
+        m_header_layout.addWidget(QLabel("Live Attendance Monitor:"))
+        m_layout.addLayout(m_header_layout)
+        
+        tables_layout = QHBoxLayout()
+        
+        # Present Section
+        p_vbox = QVBoxLayout()
+        p_vbox.addWidget(QLabel("<b>Present Students</b>"))
+        self.monitor_table = QTableWidget(0, 5) # Keep name as monitor_table to minimize logic changes
+        self.monitor_table.setHorizontalHeaderLabels(["Image", "Enrollment", "Name", "Time", "Status"])
+        self.monitor_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        p_vbox.addWidget(self.monitor_table)
+        
+        # Absent Section
+        a_vbox = QVBoxLayout()
+        a_vbox.addWidget(QLabel("<b>Absent Students</b>"))
+        self.absent_table = QTableWidget(0, 2)
+        self.absent_table.setHorizontalHeaderLabels(["Enrollment", "Name"])
+        self.absent_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        a_vbox.addWidget(self.absent_table)
+        
+        tables_layout.addLayout(p_vbox, 3)
+        tables_layout.addLayout(a_vbox, 1)
+        
+        m_layout.addLayout(tables_layout)
         s_layout.addWidget(self.monitor_frame); self.monitor_frame.hide()
         
         btn_report = QPushButton("Export Daily PDF Report")
@@ -1128,6 +1159,13 @@ class MainWindow(QMainWindow):
                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 crud.delete_user(self.db, eid)
+                
+                # Cloud Sync
+                if self.session_cloud_pw:
+                    threading.Thread(target=sync_client.delete_user_cloud, 
+                                    args=(self.current_user.enrollment, self.session_cloud_pw, eid), 
+                                    daemon=True).start()
+                
                 QMessageBox.information(dialog, "Deleted", "Staff member removed.")
                 self.refresh_admin_data()
                 dialog.accept()
@@ -1225,6 +1263,12 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             if crud.delete_user(self.db, enroll):
+                # Cloud Sync
+                if self.session_cloud_pw:
+                    threading.Thread(target=sync_client.delete_user_cloud, 
+                                    args=(self.current_user.enrollment, self.session_cloud_pw, enroll), 
+                                    daemon=True).start()
+
                 QMessageBox.information(self, "Deleted", "Student and all associated records have been removed.")
                 self.update_form.hide()
                 self.stu_search.clear()
@@ -1246,6 +1290,22 @@ class MainWindow(QMainWindow):
                                  department_id=self.current_user.department_id,
                                  semester=sem, course_name=course, major_minor=major,
                                  embedding=self.current_embedding)
+                
+                # 2. Sync to Cloud
+                if not self.session_cloud_pw:
+                    from PyQt6.QtWidgets import QInputDialog
+                    pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+                    if ok and pwd: self.session_cloud_pw = pwd
+                
+                if self.session_cloud_pw:
+                    full_user = crud.get_user_by_enrollment(self.db, enroll)
+                    if full_user:
+                        user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                        if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
+                        threading.Thread(target=sync_client.upsert_user_cloud, 
+                                        args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                        daemon=True).start()
+
                 self.show_timed_msg("Success", f"Student {name} enrolled!", 1000)
                 self.stu_name.clear(); self.stu_enroll.clear()
             except Exception as e:
@@ -1304,6 +1364,22 @@ class MainWindow(QMainWindow):
                 "routine_id": rid
             }
             self.monitor_table.setRowCount(0)
+            self.absent_table.setRowCount(0)
+            
+            # Populate Absent Table
+            db = SessionLocal()
+            try:
+                students = crud.get_students_by_dept_sem(db, self.current_user.department_id, sem)
+                for s in students:
+                    row = self.absent_table.rowCount()
+                    self.absent_table.insertRow(row)
+                    self.absent_table.setItem(row, 0, QTableWidgetItem(s.enrollment))
+                    self.absent_table.setItem(row, 1, QTableWidgetItem(s.name))
+            except Exception as e:
+                print(f"Error populating absent list: {e}")
+            finally:
+                db.close()
+
             self.monitor_frame.show()
             self.btn_session_control.setText("End Class Session")
             self.btn_session_control.setObjectName("DangerBtn")
@@ -1456,15 +1532,17 @@ class MainWindow(QMainWindow):
                 if is_live:
                     if hasattr(self, 'active_session') and self.active_session is not None:
                         self.status_label.setText("Verifying Identity...")
-                        if time.time() - self.last_mark_time > self.auto_mark_delay:
-                            self.mark_attendance(box)
                     else:
-                        self.status_label.setText("Session Inactive - Marking Disabled")
+                        self.status_label.setText("Ready to Mark Attendance")
+                    
+                    if time.time() - self.last_mark_time > self.auto_mark_delay:
+                        self.mark_attendance(box)
                 else:
-                    self.status_label.setText("Liveness Check Failed!")
+                    self.status_label.setText("Liveness Check Failed (Blink to Verify)")
             else:
-                self.status_label.setText("Waiting for Face...")
-        except Exception: pass
+                self.status_label.setText("Searching for Faces...")
+        except Exception as e:
+            print(f"Face status update failed: {e}")
 
     def closeEvent(self, event):
         if hasattr(self, 'thread'):
@@ -1503,7 +1581,15 @@ class MainWindow(QMainWindow):
         if not (self.current_user.role == 'teacher' and hasattr(self, 'monitor_table')):
             return
 
-        # Duplicate Check
+        # 1. Remove from Absent Table if present
+        if hasattr(self, 'absent_table'):
+            for i in range(self.absent_table.rowCount()):
+                item = self.absent_table.item(i, 0)
+                if item and item.text() == user_data['enrollment']:
+                    self.absent_table.removeRow(i)
+                    break
+
+        # 2. Duplicate Check for Present Table
         for i in range(self.monitor_table.rowCount()):
             if self.monitor_table.item(i, 1).text() == user_data['enrollment']:
                 return
@@ -1543,8 +1629,13 @@ class MainWindow(QMainWindow):
                 self.add_to_live_monitor(best_match, box)
             elif res["status"] == "duplicate":
                 self.status_label.setText(f"{best_match['name']} already marked.")
-                self.last_mark_time = time.time() # Prevent rapid re-firing
+                self.last_mark_time = time.time()
+            else:
+                # Likely 'error' meaning no routine
+                self.status_label.setText(res.get("message", "Error marking attendance"))
+                self.last_mark_time = time.time()
         except Exception as e:
+            self.status_label.setText("System Error: Check Logs")
             print(f"Attendance Error: {e}")
         finally:
             db.close()
@@ -1564,6 +1655,11 @@ class MainWindow(QMainWindow):
         is_error = "failed" in message.lower()
         self.show_notification(message, is_error=is_error)
         self.statusBar().showMessage(message, 10000 if is_error else 5000)
+        
+        if is_error:
+            QMessageBox.critical(self, "Sync Status", message)
+        else:
+            QMessageBox.information(self, "Sync Status", message)
 
     def check_for_updates_manually(self):
         if not self.version_thread.isRunning():
@@ -1719,7 +1815,7 @@ class MainWindow(QMainWindow):
                 if ok and pwd: self.session_cloud_pw = pwd
             
             if self.session_cloud_pw:
-                threading.Thread(target=sync_client.delete_routine_from_cloud, 
+                threading.Thread(target=sync_client.delete_routine_cloud, 
                                 args=(self.current_user.enrollment, self.session_cloud_pw, rid), 
                                 daemon=True).start()
             

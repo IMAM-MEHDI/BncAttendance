@@ -93,6 +93,13 @@ def get_all_users(db: Session, role: str = None):
         query = query.filter(models.User.role == role)
     return query.all()
 
+def get_students_by_dept_sem(db: Session, dept_id: int, sem: int):
+    return db.query(models.User).filter(
+        models.User.department_id == dept_id,
+        models.User.semester == sem,
+        models.User.role == 'student'
+    ).all()
+
 from datetime import datetime
 
 # --- Routine CRUD ---
@@ -122,6 +129,10 @@ def create_routine(db: Session, day: str, start: str, end: str, subject_id: int,
 
 def get_routines_by_dept(db: Session, dept_id: int):
     return db.query(models.Routine).filter(models.Routine.department_id == dept_id).all()
+
+def delete_routine(db: Session, routine_id: int):
+    db.query(models.Routine).filter(models.Routine.id == routine_id).delete()
+    db.commit()
 
 # --- Attendance Logic ---
 def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float, routine_id: int = None):

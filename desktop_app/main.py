@@ -5,10 +5,14 @@ from PyQt6.QtWidgets import QApplication
 # Add current directory to path so modules can be found
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from utils.paths import get_resource_path
+
+# Fix missing AI model dependencies by directing facenet_pytorch to bundled weights
+os.environ["TORCH_HOME"] = get_resource_path(os.path.join("assets", "torch"))
+
 from ui.main_window import MainWindow
 from ui.login_window import LoginWindow
 from database.session import init_db
-from utils.paths import get_resource_path
 
 import traceback
 from PyQt6.QtWidgets import QMessageBox
@@ -16,6 +20,8 @@ from PyQt6.QtWidgets import QMessageBox
 def global_exception_hook(exctype, value, tb):
     """Catch unhandled exceptions and show them in a GUI dialog instead of silently crashing."""
     err_msg = "".join(traceback.format_exception(exctype, value, tb))
+    with open("error_log.txt", "w") as f:
+        f.write(err_msg)
     print(err_msg)
     # If QApplication is running, show a message box
     if QApplication.instance():
