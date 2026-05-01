@@ -43,6 +43,21 @@ class SyncThread(QThread):
         except Exception as e:
             self.finished_signal.emit(f"Sync failed: {str(e)}")
 
+class PullMasterDataThread(QThread):
+    finished_signal = pyqtSignal(dict)
+    def __init__(self, enrollment, password):
+        super().__init__()
+        self.enrollment = enrollment
+        self.password = password
+        
+    def run(self):
+        try:
+            from sync.client import pull_master_data_from_backend
+            res = pull_master_data_from_backend(self.enrollment, self.password)
+            self.finished_signal.emit(res)
+        except Exception as e:
+            self.finished_signal.emit({"status": "error", "message": str(e)})
+
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     face_detected_signal = pyqtSignal(object, object, bool)
@@ -637,7 +652,7 @@ class MainWindow(QMainWindow):
     def pull_database_from_cloud(self):
         from PyQt6.QtWidgets import QDialog, QLineEdit, QFormLayout, QVBoxLayout
         dialog = QDialog(self)
-        dialog.setWindowTitle("Connect to Supabase")
+        dialog.setWindowTitle("Connect to Backend Database")
         dialog.setMinimumWidth(400)
         dialog.setStyleSheet("QLabel { color: black; } QLineEdit { color: black; background-color: white; padding: 5px; }")
         
@@ -645,13 +660,13 @@ class MainWindow(QMainWindow):
         form_widget = QWidget(); f_layout = QFormLayout(form_widget)
         
         url_input = QLineEdit()
-        url_input.setPlaceholderText("https://<project>.supabase.co")
+        url_input.setPlaceholderText("e.g. admin")
         key_input = QLineEdit()
-        key_input.setPlaceholderText("ey...")
+        key_input.setPlaceholderText("Admin Password")
         key_input.setEchoMode(QLineEdit.EchoMode.Password)
         
-        f_layout.addRow("Supabase URL:", url_input)
-        f_layout.addRow("Service Role Key:", key_input)
+        f_layout.addRow("Admin Enrollment ID:", url_input)
+        f_layout.addRow("Admin Password:", key_input)
         d_layout.addWidget(form_widget)
         
         btn_pull = QPushButton("Authenticate and Download")
@@ -659,28 +674,28 @@ class MainWindow(QMainWindow):
         d_layout.addWidget(btn_pull)
         
         def execute_pull():
-            url = url_input.text().strip()
-            key = key_input.text().strip()
-            if not url or not key:
-                QMessageBox.warning(dialog, "Error", "Both URL and Key are required.")
+            enrollment = url_input.text().strip()
+            password = key_input.text().strip()
+            if not enrollment or not password:
+                QMessageBox.warning(dialog, "Error", "Both Enrollment ID and Password are required.")
                 return
             
             btn_pull.setText("Downloading... Please wait.")
             btn_pull.setEnabled(False)
-            from PyQt6.QtCore import QCoreApplication
-            QCoreApplication.processEvents()
             
-            from sync.client import pull_master_data_from_supabase
-            res = pull_master_data_from_supabase(url, key)
-            
-            if res["status"] == "success":
-                QMessageBox.information(dialog, "Success", res["message"])
-                self.refresh_admin_data()
-                dialog.accept()
-            else:
-                QMessageBox.critical(dialog, "Error", res["message"])
-                btn_pull.setText("Authenticate and Download")
-                btn_pull.setEnabled(True)
+            self.pull_thread = PullMasterDataThread(enrollment, password)
+            def on_pull_finished(res):
+                if res.get("status") == "success":
+                    QMessageBox.information(dialog, "Success", res.get("message", "Success"))
+                    self.refresh_admin_data()
+                    dialog.accept()
+                else:
+                    QMessageBox.critical(dialog, "Error", res.get("message", "Unknown error"))
+                    btn_pull.setText("Authenticate and Download")
+                    btn_pull.setEnabled(True)
+                    
+            self.pull_thread.finished_signal.connect(on_pull_finished)
+            self.pull_thread.start()
                 
         btn_pull.clicked.connect(execute_pull)
         dialog.exec()

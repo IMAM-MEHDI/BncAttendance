@@ -10,3 +10,7 @@ class AttendanceRecordBase(BaseModel):
 
 class SyncRequest(BaseModel):
     records: List[AttendanceRecordBase]
+
+class MasterDataRequest(BaseModel):
+    enrollment: str
+    password: str

@@ -39,48 +39,39 @@ def sync_data():
     finally:
         db.close()
 
-def pull_master_data_from_supabase(supabase_url: str, supabase_key: str):
+def pull_master_data_from_backend(enrollment: str, password: str):
     db = SessionLocal()
     from database import models
     from datetime import datetime
     
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Content-Type": "application/json"
-    }
-    
     try:
-        # 1. Departments
-        resp = requests.get(f"{supabase_url}/rest/v1/departments", headers=headers)
+        payload = {
+            "enrollment": enrollment,
+            "password": password
+        }
+        resp = requests.post(f"{BACKEND_URL}/master-data", json=payload)
         resp.raise_for_status()
-        for row in resp.json():
+        data = resp.json()
+
+        # 1. Departments
+        for row in data.get("departments", []):
             db.merge(models.Department(**row))
         db.commit()
         
         # 2. Subjects
-        resp = requests.get(f"{supabase_url}/rest/v1/subjects", headers=headers)
-        resp.raise_for_status()
-        for row in resp.json():
+        for row in data.get("subjects", []):
             db.merge(models.Subject(**row))
         db.commit()
         
         # 3. Users
-        resp = requests.get(f"{supabase_url}/rest/v1/users", headers=headers)
-        resp.raise_for_status()
-        for row in resp.json():
+        for row in data.get("users", []):
             if row.get("embedding") and isinstance(row["embedding"], str):
-                emb_str = row["embedding"]
-                if emb_str.startswith("\\x"):
-                    emb_str = emb_str[2:]
-                row["embedding"] = bytes.fromhex(emb_str)
+                row["embedding"] = bytes.fromhex(row["embedding"])
             db.merge(models.User(**row))
         db.commit()
         
         # 4. Routines
-        resp = requests.get(f"{supabase_url}/rest/v1/routines", headers=headers)
-        resp.raise_for_status()
-        for row in resp.json():
+        for row in data.get("routines", []):
             if row.get("start_time") and isinstance(row["start_time"], str):
                 row["start_time"] = datetime.strptime(row["start_time"], "%H:%M:%S").time()
             if row.get("end_time") and isinstance(row["end_time"], str):
@@ -88,11 +79,12 @@ def pull_master_data_from_supabase(supabase_url: str, supabase_key: str):
             db.merge(models.Routine(**row))
         db.commit()
         
-        return {"status": "success", "message": "Master database synchronized from Cloud successfully!"}
+        return {"status": "success", "message": "Master database synchronized from Backend successfully!"}
         
     except requests.exceptions.HTTPError as he:
         db.rollback()
-        return {"status": "error", "message": f"HTTP Error {he.response.status_code}: {he.response.text}"}
+        error_detail = he.response.json().get("detail", he.response.text) if he.response.content else he.response.text
+        return {"status": "error", "message": f"HTTP Error {he.response.status_code}: {error_detail}"}
     except Exception as e:
         db.rollback()
         return {"status": "error", "message": str(e)}
