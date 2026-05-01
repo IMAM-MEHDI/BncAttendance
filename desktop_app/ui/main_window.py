@@ -613,12 +613,77 @@ class MainWindow(QMainWindow):
         btn_reg_staff = QPushButton("Register New Staff"); btn_reg_staff.setObjectName("SuccessBtn"); btn_reg_staff.setMinimumHeight(50); btn_reg_staff.clicked.connect(self.register_staff)
         s_container.addWidget(btn_reg_staff)
         
+        # Cloud Sync Tab
+        cloud_tab = QWidget()
+        c_layout = QVBoxLayout(cloud_tab)
+        c_label = QLabel("Initial Setup: Pull Master Database from Supabase Cloud")
+        c_label.setStyleSheet("color: black; font-weight: bold; font-size: 16px; margin-bottom: 10px;")
+        btn_pull_cloud = QPushButton("Download Database from Cloud")
+        btn_pull_cloud.setObjectName("PrimaryBtn")
+        btn_pull_cloud.setMinimumHeight(60)
+        btn_pull_cloud.clicked.connect(self.pull_database_from_cloud)
+        c_layout.addWidget(c_label)
+        c_layout.addWidget(btn_pull_cloud)
+        c_layout.addStretch()
+
         tabs.addTab(wrap_scroll(dept_tab), "Departments")
         tabs.addTab(wrap_scroll(staff_tab), "Staff Registration")
+        tabs.addTab(wrap_scroll(cloud_tab), "Cloud Sync")
         tabs.addTab(self.create_camera_control_tab(), "Camera Control")
         layout.addWidget(tabs)
         self.stack.addWidget(self.admin_panel)
         self.refresh_admin_data()
+
+    def pull_database_from_cloud(self):
+        from PyQt6.QtWidgets import QDialog, QLineEdit, QFormLayout, QVBoxLayout
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Connect to Supabase")
+        dialog.setMinimumWidth(400)
+        dialog.setStyleSheet("QLabel { color: black; } QLineEdit { color: black; background-color: white; padding: 5px; }")
+        
+        d_layout = QVBoxLayout(dialog)
+        form_widget = QWidget(); f_layout = QFormLayout(form_widget)
+        
+        url_input = QLineEdit()
+        url_input.setPlaceholderText("https://<project>.supabase.co")
+        key_input = QLineEdit()
+        key_input.setPlaceholderText("ey...")
+        key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        
+        f_layout.addRow("Supabase URL:", url_input)
+        f_layout.addRow("Service Role Key:", key_input)
+        d_layout.addWidget(form_widget)
+        
+        btn_pull = QPushButton("Authenticate and Download")
+        btn_pull.setObjectName("PrimaryBtn")
+        d_layout.addWidget(btn_pull)
+        
+        def execute_pull():
+            url = url_input.text().strip()
+            key = key_input.text().strip()
+            if not url or not key:
+                QMessageBox.warning(dialog, "Error", "Both URL and Key are required.")
+                return
+            
+            btn_pull.setText("Downloading... Please wait.")
+            btn_pull.setEnabled(False)
+            from PyQt6.QtCore import QCoreApplication
+            QCoreApplication.processEvents()
+            
+            from sync.client import pull_master_data_from_supabase
+            res = pull_master_data_from_supabase(url, key)
+            
+            if res["status"] == "success":
+                QMessageBox.information(dialog, "Success", res["message"])
+                self.refresh_admin_data()
+                dialog.accept()
+            else:
+                QMessageBox.critical(dialog, "Error", res["message"])
+                btn_pull.setText("Authenticate and Download")
+                btn_pull.setEnabled(True)
+                
+        btn_pull.clicked.connect(execute_pull)
+        dialog.exec()
 
     def toggle_camera(self):
         if self.thread.isRunning():
@@ -1086,8 +1151,8 @@ class MainWindow(QMainWindow):
     def toggle_class_session(self):
         if not hasattr(self, 'active_session') or self.active_session is None:
             # Start Session
-            p_name = self.t_paper.text().strip()
-            p_code = self.t_code.text().strip()
+            p_name = self.t_paper.text().strip() or "Ad-hoc Class"
+            p_code = self.t_code.text().strip() or "ADHOC"
             sem_text = self.t_sem.text().strip()
             sem = int(sem_text) if sem_text.isdigit() else 0
             
@@ -1101,7 +1166,25 @@ class MainWindow(QMainWindow):
                 ).filter(
                     (models.Subject.code == p_code) | (models.Subject.name.ilike(p_name))
                 ).first()
-                if routine: rid = routine.id
+                if routine: 
+                    rid = routine.id
+                else:
+                    import datetime
+                    subj = crud.get_or_create_subject(db, p_code, p_name)
+                    now = datetime.datetime.now()
+                    new_routine = models.Routine(
+                        day_of_week=now.strftime("%A"),
+                        start_time=(now - datetime.timedelta(minutes=5)).time(),
+                        end_time=(now + datetime.timedelta(hours=2)).time(),
+                        semester=sem,
+                        subject_id=subj.id,
+                        teacher_id=self.current_user.id,
+                        department_id=self.current_user.department_id
+                    )
+                    db.add(new_routine)
+                    db.commit()
+                    db.refresh(new_routine)
+                    rid = new_routine.id
             except Exception as e:
                 print(f"Routine lookup error: {e}")
             finally:
@@ -1122,6 +1205,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Session Started", f"Attendance is now active for {self.active_session['paper_name']}")
         else:
             # End Session
+            self.last_session = self.active_session
             self.active_session = None
             self.monitor_frame.hide()
             self.btn_session_control.setText("Start Class Session")
@@ -1185,7 +1269,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, self.STR_EXP_ERR, f"Could not export PDF: {str(e)}")
 
     def export_teacher_report(self):
-        if not hasattr(self, 'active_session') or self.active_session is None:
+        session_to_export = getattr(self, 'active_session', None)
+        if not session_to_export:
+            session_to_export = getattr(self, 'last_session', None)
+
+        if not session_to_export:
             QMessageBox.warning(self, "Error", "No active session to export.")
             return
             
@@ -1214,10 +1302,10 @@ class MainWindow(QMainWindow):
                 t = datetime.datetime.strptime(t_str, "%H:%M:%S")
             except:
                 t = datetime.datetime.now()
-            records.append(MockRecord(e, n, t, self.active_session['paper_name']))
+            records.append(MockRecord(e, n, t, session_to_export['paper_name']))
 
-        title = f"Class Attendance: {self.active_session['paper_name']}"
-        filename = f"Attendance_{self.active_session['paper_code']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        title = f"Class Attendance: {session_to_export['paper_name']}"
+        filename = f"Attendance_{session_to_export['paper_code']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
         
         # Refresh user to ensure relationships are loaded
         self.db.add(self.current_user)
@@ -1226,9 +1314,9 @@ class MainWindow(QMainWindow):
         metadata = {
             "dept": self.current_user.department.name if self.current_user.department else "N/A",
             "teacher": self.current_user.name,
-            "paper": self.active_session['paper_name'],
-            "code": self.active_session['paper_code'],
-            "sem": self.active_session['semester']
+            "paper": session_to_export['paper_name'],
+            "code": session_to_export['paper_code'],
+            "sem": session_to_export['semester']
         }
         
         try:
@@ -1262,7 +1350,7 @@ class MainWindow(QMainWindow):
                     if hasattr(self, 'active_session') and self.active_session is not None:
                         self.status_label.setText("Verifying Identity...")
                         if time.time() - self.last_mark_time > self.auto_mark_delay:
-                            self.mark_attendance()
+                            self.mark_attendance(box)
                     else:
                         self.status_label.setText("Session Inactive - Marking Disabled")
                 else:

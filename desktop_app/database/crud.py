@@ -93,11 +93,25 @@ def get_all_users(db: Session, role: str = None):
         query = query.filter(models.User.role == role)
     return query.all()
 
+from datetime import datetime
+
 # --- Routine CRUD ---
 def create_routine(db: Session, day: str, start: str, end: str, subject_id: int,
                    semester: int, teacher_id: int, dept_id: int):
+    
+    # SQLite Time type requires Python datetime.time objects
+    try:
+        start_time = datetime.strptime(start, "%I:%M %p").time()
+    except ValueError:
+        start_time = datetime.strptime(start, "%H:%M").time() if ":" in start else None
+        
+    try:
+        end_time = datetime.strptime(end, "%I:%M %p").time()
+    except ValueError:
+        end_time = datetime.strptime(end, "%H:%M").time() if ":" in end else None
+
     db_routine = models.Routine(
-        day_of_week=day, start_time=start, end_time=end,
+        day_of_week=day, start_time=start_time, end_time=end_time,
         subject_id=subject_id,
         semester=semester, teacher_id=teacher_id, department_id=dept_id
     )
