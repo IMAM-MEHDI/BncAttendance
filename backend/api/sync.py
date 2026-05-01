@@ -23,9 +23,24 @@ def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
     """Receive attendance records from local devices and save to central DB."""
     try:
         new_records = []
+        
+        # Pre-fetch valid user_ids and routine_ids to avoid repeated DB lookups if batch is large
+        # but for small batches, simple check is fine.
         for rec in request.records:
+            # 1. Verify User exists
+            exists = db.query(models.User).filter(models.User.user_id == rec.user_id).first()
+            if not exists:
+                print(f"Skipping record for non-existent user: {rec.user_id}")
+                continue
+
+            # 2. Verify Routine exists (if provided)
+            if rec.routine_id:
+                r_exists = db.query(models.Routine).filter(models.Routine.id == rec.routine_id).first()
+                if not r_exists:
+                    print(f"Skipping record for non-existent routine: {rec.routine_id}")
+                    continue
+
             # Create new record object
-            # Note: We let the central DB generate its own 'id'
             record = models.AttendanceRecord(
                 user_id=rec.user_id,
                 routine_id=rec.routine_id,
@@ -40,7 +55,7 @@ def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
             db.add_all(new_records)
             db.commit()
             
-        print(f"Successfully saved {len(new_records)} records to cloud.")
+        print(f"Successfully saved {len(new_records)} records to cloud. (Skipped {len(request.records) - len(new_records)})")
         return {"status": "success", "synced_count": len(new_records)}
     except Exception as e:
         db.rollback()
