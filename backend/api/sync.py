@@ -1,10 +1,22 @@
-from fastapi import APIRouter
-from schemas.sync import SyncRequest
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import Annotated
+from database.session import SessionLocal
+from schemas.sync import SyncRequest, MasterDataRequest
+from database import models
+import bcrypt
 
 router = APIRouter()
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 @router.post("/")
-def sync_records(request: SyncRequest, db: Session = Depends(get_db)):
+def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
     """Receive attendance records from local devices and save to central DB."""
     try:
         new_records = []
@@ -31,20 +43,6 @@ def sync_records(request: SyncRequest, db: Session = Depends(get_db)):
         db.rollback()
         print(f"Error during record sync: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
-from database.session import SessionLocal
-from schemas.sync import MasterDataRequest
-from database import models
-import bcrypt
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.post("/master-data")
 def get_master_data(request: MasterDataRequest, db: Session = Depends(get_db)):
