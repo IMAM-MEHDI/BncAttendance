@@ -15,7 +15,10 @@ def initialize():
     if not admin:
         print("Creating default admin user...")
         # Get password from environment or use a safe fallback (though env is preferred)
-        admin_pw = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        admin_pw = os.getenv("DEFAULT_ADMIN_PASSWORD")
+        if not admin_pw:
+            print("WARNING: DEFAULT_ADMIN_PASSWORD not set in .env! Cannot create admin user.")
+            return
         
         crud.create_user(
             db, 

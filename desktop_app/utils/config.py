@@ -41,11 +41,18 @@ class Config:
 
         # Environment Variables (Sensitive)
         # Default to SQLite for zero-installation offline support
-        default_db_path = BASE_DIR / "local_attendance.db"
+        if getattr(sys, 'frozen', False):
+            # When installed, Program Files is read-only. Use APPDATA.
+            appdata_dir = Path(os.getenv('APPDATA', os.path.expanduser('~'))) / 'BncAttendance'
+            appdata_dir.mkdir(parents=True, exist_ok=True)
+            default_db_path = appdata_dir / "local_attendance.db"
+        else:
+            default_db_path = BASE_DIR / "local_attendance.db"
+            
         self.DATABASE_URL = os.getenv("LOCAL_DATABASE_URL", f"sqlite:///{default_db_path}")
         
         self.BACKEND_SYNC_URL = os.getenv("BACKEND_SYNC_URL")
-        self.DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        self.DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD")
         
         # Derived values
         self.BACKEND_BASE_URL = self.BACKEND_SYNC_URL.split("/api/v1/")[0] if self.BACKEND_SYNC_URL else "http://localhost:8000"

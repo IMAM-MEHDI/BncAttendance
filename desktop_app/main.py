@@ -10,12 +10,34 @@ from ui.login_window import LoginWindow
 from database.session import init_db
 from utils.paths import get_resource_path
 
+import traceback
+from PyQt6.QtWidgets import QMessageBox
+
+def global_exception_hook(exctype, value, tb):
+    """Catch unhandled exceptions and show them in a GUI dialog instead of silently crashing."""
+    err_msg = "".join(traceback.format_exception(exctype, value, tb))
+    print(err_msg)
+    # If QApplication is running, show a message box
+    if QApplication.instance():
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("Critical Error")
+        msg.setText("The application encountered an unexpected error and needs to close.")
+        msg.setDetailedText(err_msg)
+        msg.exec()
+    sys.__excepthook__(exctype, value, tb)
+    sys.exit(1)
+
+sys.excepthook = global_exception_hook
+
 def main():
     print("Initializing Database...")
     try:
         init_db()
+        from init_admin import initialize as init_admin_user
+        init_admin_user() # Ensure default admin is created in SQLite
     except Exception as e:
-        print(f"Warning: Could not connect to local PostgreSQL DB. Is it running? Error: {e}")
+        print(f"Warning: DB initialization error: {e}")
 
     app = QApplication(sys.argv)
     
