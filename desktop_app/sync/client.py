@@ -56,7 +56,14 @@ def pull_master_data_from_backend(enrollment: str, password: str):
         request_url = f"{BACKEND_URL.rstrip('/')}/master-data"
         resp = requests.post(request_url, json=payload)
         resp.raise_for_status()
-        data = resp.json()
+        
+        try:
+            data = resp.json()
+        except ValueError:
+            # If it's not JSON, it might be an HTML error page or HuggingFace "sleeping" page
+            if "text/html" in resp.headers.get("Content-Type", ""):
+                return {"status": "error", "message": "Backend returned an HTML page instead of data. The server might be sleeping or down. Please try visiting the backend URL in your browser to wake it up."}
+            return {"status": "error", "message": f"Invalid response from server: {resp.text[:100]}"}
 
         # 1. Departments
         for row in data.get("departments", []):
