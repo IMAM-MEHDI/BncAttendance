@@ -38,8 +38,11 @@ class SyncThread(QThread):
     finished_signal = pyqtSignal(str)
     def run(self):
         try:
-            sync_client.sync_data()
-            self.finished_signal.emit("Sync completed.")
+            count = sync_client.sync_data()
+            if count > 0:
+                self.finished_signal.emit(f"Successfully synced {count} records.")
+            else:
+                self.finished_signal.emit("All records are already in the cloud.")
         except Exception as e:
             self.finished_signal.emit(f"Sync failed: {str(e)}")
 
@@ -1471,10 +1474,7 @@ class MainWindow(QMainWindow):
     def handle_sync_result(self, message):
         is_error = "failed" in message.lower()
         self.show_notification(message, is_error=is_error)
-        if is_error:
-            self.statusBar().showMessage(message, 10000)
-        else:
-            self.statusBar().showMessage(message, 5000)
+        self.statusBar().showMessage(message, 10000 if is_error else 5000)
 
     def check_for_updates_manually(self):
         if not self.version_thread.isRunning():

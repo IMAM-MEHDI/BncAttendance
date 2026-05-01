@@ -9,10 +9,13 @@ BACKEND_URL = settings.BACKEND_SYNC_URL
 def sync_data():
     db = SessionLocal()
     try:
+        if not BACKEND_URL:
+            return 0
+            
         unsynced = crud.get_unsynced_records(db)
         if not unsynced:
             print("No records to sync.")
-            return
+            return 0
 
         records_data = []
         record_ids = []
@@ -27,15 +30,20 @@ def sync_data():
             record_ids.append(r.id)
 
         payload = {"records": records_data}
-        response = requests.post(BACKEND_URL, json=payload)
+        # Ensure trailing slash for the base sync endpoint
+        request_url = BACKEND_URL if BACKEND_URL.endswith("/") else f"{BACKEND_URL}/"
+        response = requests.post(request_url, json=payload)
         
         if response.status_code == 200:
             crud.mark_records_synced(db, record_ids)
             print(f"Successfully synced {len(record_ids)} records.")
+            return len(record_ids)
         else:
             print(f"Sync failed: {response.text}")
+            raise Exception(f"Server returned {response.status_code}: {response.text}")
     except Exception as e:
         print(f"Error during sync: {e}")
+        raise e
     finally:
         db.close()
 
