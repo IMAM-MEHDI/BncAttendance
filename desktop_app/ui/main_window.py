@@ -123,11 +123,8 @@ class MainWindow(QMainWindow):
 
         print("Initializing Engine...")
         self.engine = FaceRecognitionEngine()
-        self.active_session = None # For Teachers: {paper_name, paper_code, semester}
-        self.current_user = None
-        self.db = SessionLocal()
         self.session_cloud_pw = None # Session cache for cloud sync
-        self.active_session = None
+        self.active_session = None # For Teachers: {paper_name, paper_code, semester}
         self.current_embedding = None
         self.is_live = False
         self.last_mark_time = 0
