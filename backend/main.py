@@ -25,7 +25,6 @@ def on_startup():
             hashed_pw = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             
             new_admin = models.User(
-                id=str(uuid.uuid4()),
                 user_id="ADMIN-001",
                 name="System Administrator",
                 enrollment="admin",
