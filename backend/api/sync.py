@@ -4,11 +4,33 @@ from schemas.sync import SyncRequest
 router = APIRouter()
 
 @router.post("/")
-def sync_records(request: SyncRequest):
-    # Logic to insert into central database would go here
-    # For now, just print and return success
-    print(f"Received {len(request.records)} records to sync.")
-    return {"status": "success", "synced_count": len(request.records)}
+def sync_records(request: SyncRequest, db: Session = Depends(get_db)):
+    """Receive attendance records from local devices and save to central DB."""
+    try:
+        new_records = []
+        for rec in request.records:
+            # Create new record object
+            # Note: We let the central DB generate its own 'id'
+            record = models.AttendanceRecord(
+                user_id=rec.user_id,
+                routine_id=rec.routine_id,
+                timestamp=rec.timestamp,
+                device_id=rec.device_id,
+                confidence=rec.confidence,
+                sync_status=True # It's now in the cloud
+            )
+            new_records.append(record)
+            
+        if new_records:
+            db.add_all(new_records)
+            db.commit()
+            
+        print(f"Successfully saved {len(new_records)} records to cloud.")
+        return {"status": "success", "synced_count": len(new_records)}
+    except Exception as e:
+        db.rollback()
+        print(f"Error during record sync: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
