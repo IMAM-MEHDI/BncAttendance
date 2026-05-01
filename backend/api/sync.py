@@ -46,13 +46,16 @@ def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
 
 @router.post("/master-data")
 def get_master_data(request: MasterDataRequest, db: Session = Depends(get_db)):
-    # 1. Authenticate Admin
-    admin_user = db.query(models.User).filter(models.User.enrollment == request.enrollment, models.User.role == 'admin').first()
-    if not admin_user or not admin_user.password_hash:
-        raise HTTPException(status_code=401, detail="Invalid admin credentials or user not found.")
+    # 1. Authenticate (Admin or HOD allowed)
+    user = db.query(models.User).filter(models.User.enrollment == request.enrollment).first()
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="Invalid credentials or user not found.")
         
-    if not bcrypt.checkpw(request.password.encode('utf-8'), admin_user.password_hash.encode('utf-8')):
-        raise HTTPException(status_code=401, detail="Invalid admin credentials.")
+    if not bcrypt.checkpw(request.password.encode('utf-8'), user.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+
+    if user.role not in ['admin', 'hod']:
+        raise HTTPException(status_code=403, detail="Permission denied. Only Admins or HODs can pull master data.")
 
     # 2. Fetch all required data
     departments = db.query(models.Department).all()
@@ -81,4 +84,73 @@ def get_master_data(request: MasterDataRequest, db: Session = Depends(get_db)):
     }
     
     return data
+
+@router.post("/upsert-user")
+def upsert_user(request: UserUpsertRequest, db: Session = Depends(get_db)):
+    # Auth
+    admin = db.query(models.User).filter(models.User.enrollment == request.admin_enrollment, models.User.role.in_(['admin', 'hod'])).first()
+    if not admin or not bcrypt.checkpw(request.admin_password.encode('utf-8'), admin.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    data = request.user_data
+    if 'embedding' in data and data['embedding']:
+        data['embedding'] = bytes.fromhex(data['embedding'])
+    
+    existing = db.query(models.User).filter(models.User.enrollment == data['enrollment']).first()
+    if existing:
+        for k, v in data.items(): setattr(existing, k, v)
+    else:
+        new_user = models.User(**data)
+        db.add(new_user)
+    
+    db.commit()
+    return {"status": "success"}
+
+@router.post("/delete-user")
+def delete_user(request: DeleteUserRequest, db: Session = Depends(get_db)):
+    admin = db.query(models.User).filter(models.User.enrollment == request.admin_enrollment, models.User.role == 'admin').first()
+    if not admin or not bcrypt.checkpw(request.admin_password.encode('utf-8'), admin.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    user = db.query(models.User).filter(models.User.enrollment == request.target_enrollment).first()
+    if user:
+        db.delete(user)
+        db.commit()
+    return {"status": "success"}
+
+@router.post("/upsert-routine")
+def upsert_routine(request: RoutineUpsertRequest, db: Session = Depends(get_db)):
+    admin = db.query(models.User).filter(models.User.enrollment == request.admin_enrollment, models.User.role.in_(['admin', 'hod'])).first()
+    if not admin or not bcrypt.checkpw(request.admin_password.encode('utf-8'), admin.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    data = request.routine_data
+    # For routines, we usually identify by some combination or just upsert by ID if provided
+    # But routines in cloud might have different IDs. 
+    # For now, let's assume the local ID is shared or we use a unique constraint.
+    # Simple approach: If ID exists in cloud, update.
+    rid = data.get('id')
+    existing = db.query(models.Routine).filter(models.Routine.id == rid).first() if rid else None
+    
+    if existing:
+        for k, v in data.items(): setattr(existing, k, v)
+    else:
+        new_r = models.Routine(**data)
+        db.add(new_r)
+    
+    db.commit()
+    return {"status": "success"}
+
+@router.post("/delete-routine")
+def delete_routine(request: DeleteRoutineRequest, db: Session = Depends(get_db)):
+    admin = db.query(models.User).filter(models.User.enrollment == request.admin_enrollment, models.User.role.in_(['admin', 'hod'])).first()
+    if not admin or not bcrypt.checkpw(request.admin_password.encode('utf-8'), admin.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    routine = db.query(models.Routine).filter(models.Routine.id == request.routine_id).first()
+    if routine:
+        db.delete(routine)
+        db.commit()
+    return {"status": "success"}
+
 
