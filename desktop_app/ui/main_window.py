@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 import uuid
 import time
+import threading
+from datetime import datetime
 from PyQt6 import sip
 from PyQt6.QtWidgets import (QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, 
                              QMessageBox, QTabWidget, QLineEdit, QFormLayout, QHBoxLayout,
@@ -122,6 +124,10 @@ class MainWindow(QMainWindow):
         print("Initializing Engine...")
         self.engine = FaceRecognitionEngine()
         self.active_session = None # For Teachers: {paper_name, paper_code, semester}
+        self.current_user = None
+        self.db = SessionLocal()
+        self.session_cloud_pw = None # Session cache for cloud sync
+        self.active_session = None
         self.current_embedding = None
         self.is_live = False
         self.last_mark_time = 0
@@ -130,7 +136,25 @@ class MainWindow(QMainWindow):
         # String Constants to fix lints
         self.STR_SEM = "Semester:"
         self.STR_EXP_ERR = "Export Error"
-        self.STR_DIALOG_STYLE = "QLabel { color: black; } QLineEdit, QComboBox, QTimeEdit { color: black; background-color: white; }"
+        # Improved dialog style with high contrast
+        self.STR_DIALOG_STYLE = """
+            QDialog { background-color: #f8fafc; }
+            QLabel { color: #1e293b; font-weight: 500; }
+            QLineEdit, QComboBox, QTimeEdit { 
+                color: #0f172a; 
+                background-color: #ffffff; 
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QPushButton#PrimaryBtn {
+                background-color: #0ea5e9;
+                color: white;
+                border-radius: 6px;
+                font-weight: 600;
+                padding: 10px;
+            }
+        """
 
         print("Setting up UI...")
         self.init_standard_ui()
@@ -162,21 +186,20 @@ class MainWindow(QMainWindow):
         t = settings.THEME
         self.setStyleSheet(f"""
             QMainWindow {{
-                background-color: {t['midnight']};
+                background-color: #0f172a;
             }}
             QMenuBar {{
-                background-color: {t['midnight']};
-                color: #ffffff;
-                border-bottom: 1px solid {t['border_slate']};
+                background-color: #0f172a;
+                color: #f8fafc;
+                border-bottom: 1px solid #1e293b;
             }}
             QMenuBar::item:selected {{
-                background-color: {t['slate_navy']};
+                background-color: #1e293b;
             }}
             QToolBar {{
-                background-color: {t['midnight']};
-                color: #ffffff;
-                border-bottom: 1px solid {t['border_slate']};
-                padding: 5px;
+                background-color: #0f172a;
+                border-bottom: 1px solid #1e293b;
+                padding: 8px;
             }}
             QToolButton {{
                 color: #ffffff;
@@ -184,117 +207,116 @@ class MainWindow(QMainWindow):
                 padding: 5px 10px;
             }}
             QFrame#Sidebar {{
-                background-color: {t['slate_navy']};
-                border-right: 1px solid {t['border_slate']};
+                background-color: #1e293b;
+                border-right: 1px solid #334155;
             }}
             QLabel#Logo {{
-                color: {t['sky_blue']};
+                color: #38bdf8;
                 font-size: 24px;
                 font-weight: 800;
                 margin-bottom: 5px;
             }}
             QPushButton#NavBtn {{
                 background-color: transparent;
-                color: {t['text_slate']};
+                color: #94a3b8;
                 text-align: left;
-                padding: 15px 25px;
+                padding: 12px 20px;
                 border: none;
                 font-size: 14px;
                 font-weight: 500;
                 border-radius: 8px;
-                margin: 2px 10px;
+                margin: 4px 12px;
             }}
             QPushButton#NavBtn:hover {{
-                background-color: rgba(56, 189, 248, 0.1);
-                color: white;
+                background-color: #1e293b;
+                color: #f8fafc;
             }}
             QPushButton#NavBtn[active="true"] {{
-                background-color: rgba(56, 189, 248, 0.2);
-                color: {t['sky_blue']};
-                border-left: 4px solid {t['sky_blue']};
-                font-weight: bold;
+                background-color: #0ea5e9;
+                color: #ffffff;
+                font-weight: 600;
             }}
             
             /* Card System */
             QFrame#MainCard {{
-                background-color: {t['slate_navy']};
+                background-color: #1e293b;
                 border-radius: 20px;
-                border: 1px solid {t['border_slate']};
+                border: 1px solid #334155;
             }}
             
             QTabWidget::pane {{
-                border: 1px solid {t['border_slate']};
-                background: {t['slate_navy']};
+                border: 1px solid #334155;
+                background: #1e293b;
                 border-radius: 12px;
             }}
             QTabBar::tab {{
-                background: {t['midnight']};
-                color: {t['text_slate']};
+                background: #0f172a;
+                color: #94a3b8;
                 padding: 12px 25px;
                 border-top-left-radius: 10px;
                 border-top-right-radius: 10px;
                 margin-right: 4px;
             }}
             QTabBar::tab:selected {{
-                background: {t['slate_navy']};
-                color: {t['sky_blue']};
+                background: #1e293b;
+                color: #38bdf8;
             }}
 
             /* Buttons */
             QPushButton#PrimaryBtn {{
-                background-color: {t['sky_blue']};
-                color: {t['midnight']};
+                background-color: #38bdf8;
+                color: #0f172a;
                 border-radius: 12px;
                 padding: 12px 20px;
                 font-weight: 800;
                 font-size: 14px;
                 border: none;
             }}
-            QPushButton#PrimaryBtn:hover {{ background-color: {t['sky_blue_hover']}; }}
+            QPushButton#PrimaryBtn:hover {{ background-color: #7dd3fc; }}
             
             QPushButton#SuccessBtn {{
-                background-color: {t['success']};
-                color: {t['white_bg']};
+                background-color: #10b981;
+                color: #ffffff;
                 border-radius: 12px;
                 padding: 12px;
                 font-weight: 800;
                 border: none;
             }}
-            QPushButton#SuccessBtn:hover {{ background-color: {t['success_hover']}; }}
+            QPushButton#SuccessBtn:hover {{ background-color: #34d399; }}
 
             QPushButton#DangerBtn {{
-                background-color: {t['danger']};
-                color: {t['white_bg']};
+                background-color: #ef4444;
+                color: #ffffff;
                 border-radius: 12px;
                 padding: 12px;
                 font-weight: 800;
                 border: none;
             }}
-            QPushButton#DangerBtn:hover {{ background-color: {t['danger_hover']}; }}
+            QPushButton#DangerBtn:hover {{ background-color: #f87171; }}
 
             /* Inputs */
             QLineEdit, QComboBox {{
-                background-color: {t['midnight']};
-                border: 1px solid {t['border_slate']};
+                background-color: #0f172a;
+                border: 1px solid #334155;
                 border-radius: 10px;
                 padding: 10px;
-                color: {t['text_light_slate']};
+                color: #f1f5f9;
                 font-size: 13px;
             }}
-            QLineEdit:focus {{ border: 1px solid {t['sky_blue']}; }}
+            QLineEdit:focus {{ border: 1px solid #38bdf8; }}
 
             /* Tables */
             QTableWidget {{
-                background-color: {t['slate_navy']};
+                background-color: #1e293b;
                 alternate-background-color: #1a2233;
-                gridline-color: {t['border_slate']};
-                color: {t['text_light_slate']};
+                gridline-color: #334155;
+                color: #f1f5f9;
                 border-radius: 15px;
-                border: 1px solid {t['border_slate']};
+                border: 1px solid #334155;
             }}
             QHeaderView::section {{
-                background-color: {t['midnight']};
-                color: {t['text_slate']};
+                background-color: #0f172a;
+                color: #94a3b8;
                 padding: 12px;
                 border: none;
                 font-weight: bold;
@@ -302,19 +324,26 @@ class MainWindow(QMainWindow):
             
             QScrollBar:vertical {{
                 border: none;
-                background: {t['midnight']};
+                background: #0f172a;
                 width: 10px;
                 border-radius: 5px;
             }}
             QScrollBar::handle:vertical {{
-                background: {t['border_slate']};
+                background: #334155;
                 min-height: 30px;
                 border-radius: 5px;
             }}
             
-            QLabel {{ color: #ffffff; }}
-            QMessageBox QLabel {{ color: #000000; }}
+            QLabel {{ color: #f8fafc; }}
+            QMessageBox QLabel {{ color: #0f172a; }}
             QScrollArea {{ border: none; background: transparent; }}
+            
+            /* High Contrast for Admin Inputs */
+            QLineEdit#AdminInput {{
+                background-color: #ffffff;
+                color: #0f172a;
+                border: 2px solid #38bdf8;
+            }}
         """)
 
         layout = QHBoxLayout()
@@ -740,7 +769,8 @@ class MainWindow(QMainWindow):
 
         # Routine
         routine_tab = QWidget(); r_layout = QVBoxLayout(routine_tab)
-        self.routine_table = QTableWidget(0, 6); self.routine_table.setHorizontalHeaderLabels(["Day", "Time", "Paper Name", "Paper Code", "Sem", "Teacher"])
+        self.routine_table = QTableWidget(0, 7); 
+        self.routine_table.setHorizontalHeaderLabels(["Day", "Time", "Paper Name", "Paper Code", "Sem", "Teacher", "Action"])
         r_layout.addWidget(self.routine_table)
         btn_add_routine = QPushButton("Add Routine Entry"); btn_add_routine.setObjectName("PrimaryBtn"); btn_add_routine.clicked.connect(self.add_routine_dialog)
         r_layout.addWidget(btn_add_routine)
@@ -998,8 +1028,23 @@ class MainWindow(QMainWindow):
                 return
 
             crud.create_user(self.db, str(uuid.uuid4()), name, eid, role=role, department_id=dept_id, password=pw)
+            
+            # 2. Sync to Cloud
+            if not self.session_cloud_pw:
+                from PyQt6.QtWidgets import QInputDialog
+                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+                if ok and pwd: self.session_cloud_pw = pwd
+            
+            if self.session_cloud_pw:
+                full_user = crud.get_user_by_enrollment(self.db, eid)
+                user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
+                threading.Thread(target=sync_client.upsert_user_cloud, 
+                                args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                daemon=True).start()
+
             self.refresh_admin_data() # Update the table
-            QMessageBox.information(self, "Success", f"{role.upper()} registered successfully!")
+            QMessageBox.information(self, "Success", f"{role.upper()} registered successfully and sync started.")
             self.s_name.clear(); self.s_id.clear(); self.s_pass.clear()
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Could not register staff: {str(e)}")
@@ -1058,8 +1103,25 @@ class MainWindow(QMainWindow):
                 from database.crud import get_password_hash
                 updates["password_hash"] = get_password_hash(pass_input.text().strip())
             
+            # 1. Update Locally
             crud.update_student(self.db, eid, **updates)
-            QMessageBox.information(dialog, "Success", "Staff credentials updated.")
+            
+            # 2. Sync to Cloud
+            if not self.session_cloud_pw:
+                from PyQt6.QtWidgets import QInputDialog
+                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+                if ok and pwd: self.session_cloud_pw = pwd
+            
+            if self.session_cloud_pw:
+                full_user = crud.get_user_by_enrollment(self.db, eid)
+                if full_user:
+                    user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                    if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
+                    threading.Thread(target=sync_client.upsert_user_cloud, 
+                                    args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                    daemon=True).start()
+                
+            QMessageBox.information(dialog, "Success", "Staff updated and sync started.")
             self.refresh_admin_data()
             dialog.accept()
             
@@ -1102,11 +1164,25 @@ class MainWindow(QMainWindow):
             # Get or create subject first
             subj = crud.get_or_create_subject(self.db, code.text().strip(), paper.text().strip())
             
-            crud.create_routine(self.db, day.currentText(), start.text(), end.text(), 
-                               subj.id, int(sem.text() or 0), 
-                               t_combo.currentData(), self.current_user.department_id)
+            # 1. Create Locally
+            new_r = crud.create_routine(self.db, day.currentText(), start.text(), end.text(), 
+                                       subj.id, int(sem.text() or 0), 
+                                       t_combo.currentData(), self.current_user.department_id)
+            
+            # 2. Sync Routine
+            if not self.session_cloud_pw:
+                from PyQt6.QtWidgets import QInputDialog
+                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+                if ok and pwd: self.session_cloud_pw = pwd
+            
+            if self.session_cloud_pw:
+                routine_data = {c.name: getattr(new_r, c.name) for c in new_r.__table__.columns if c.name != 'id'}
+                threading.Thread(target=sync_client.upsert_routine_cloud, 
+                                args=(self.current_user.enrollment, self.session_cloud_pw, routine_data), 
+                                daemon=True).start()
+
             self.refresh_routine_data()
-            QMessageBox.information(self, "Success", "Routine entry added.")
+            QMessageBox.information(self, "Success", "Routine entry added and sync started.")
 
     def fetch_student_for_update(self):
         enroll = self.stu_search.text().strip()
@@ -1123,7 +1199,23 @@ class MainWindow(QMainWindow):
         crud.update_student(self.db, enroll, name=self.u_name.text(), 
                            semester=int(self.u_sem.text() or 0), 
                            course_name=self.u_course.text())
-        QMessageBox.information(self, "Success", "Student updated.")
+        
+        # Cloud Sync
+        if not self.session_cloud_pw:
+            from PyQt6.QtWidgets import QInputDialog
+            pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+            if ok and pwd: self.session_cloud_pw = pwd
+            
+        if self.session_cloud_pw:
+            user = crud.get_user_by_enrollment(self.db, enroll)
+            if user:
+                data = {c.name: getattr(user, c.name) for c in user.__table__.columns if c.name != 'id'}
+                if 'embedding' in data and data['embedding']: data['embedding'] = data['embedding'].hex()
+                threading.Thread(target=sync_client.upsert_user_cloud, 
+                                args=(self.current_user.enrollment, self.session_cloud_pw, data), 
+                                daemon=True).start()
+
+        QMessageBox.information(self, "Success", "Student updated and sync started.")
         self.update_form.hide()
 
     def delete_student(self):
@@ -1527,6 +1619,12 @@ class MainWindow(QMainWindow):
                     self.routine_table.setItem(row, 3, QTableWidgetItem(r.subject.code if r.subject else "N/A"))
                     self.routine_table.setItem(row, 4, QTableWidgetItem(str(r.semester)))
                     self.routine_table.setItem(row, 5, QTableWidgetItem(r.teacher.name if r.teacher else "N/A"))
+                    
+                    # Delete Button
+                    btn_del = QPushButton("Delete")
+                    btn_del.setStyleSheet("background-color: #ef4444; color: white; border-radius: 4px; padding: 4px;")
+                    btn_del.clicked.connect(lambda checked, rid=r.id: self.delete_routine_action(rid))
+                    self.routine_table.setCellWidget(row, 6, btn_del)
 
             # Update Analytics Paper Filter
             if hasattr(self, 'r_paper'):
@@ -1609,6 +1707,27 @@ class MainWindow(QMainWindow):
             self.r_status_label.setText("Error loading data. Retrying...")
         finally:
             db.close()
+
+    def delete_routine_action(self, rid):
+        reply = QMessageBox.question(self, "Confirm Delete", "Are you sure you want to delete this routine entry?", 
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            # 1. Local Delete
+            crud.delete_routine(self.db, rid)
+            
+            # 2. Cloud Delete
+            if not self.session_cloud_pw:
+                from PyQt6.QtWidgets import QInputDialog
+                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
+                if ok and pwd: self.session_cloud_pw = pwd
+            
+            if self.session_cloud_pw:
+                threading.Thread(target=sync_client.delete_routine_from_cloud, 
+                                args=(self.current_user.enrollment, self.session_cloud_pw, rid), 
+                                daemon=True).start()
+            
+            self.refresh_routine_data()
+            QMessageBox.information(self, "Success", "Routine entry deleted and sync started.")
 
     def handle_logout(self):
         self.logout_signal.emit()

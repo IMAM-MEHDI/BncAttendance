@@ -47,6 +47,43 @@ def sync_data():
     finally:
         db.close()
 
+def delete_user_from_cloud(admin_enroll, admin_pass, target_enroll):
+    """Notify backend to delete a user from cloud."""
+    try:
+        base_url = BACKEND_URL.rstrip("/")
+        url = f"{base_url}/delete-user"
+        payload = {"admin_enrollment": admin_enroll, "admin_password": admin_pass, "target_enrollment": target_enroll}
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception: return False
+
+def upsert_user_cloud(admin_enroll, admin_pass, user_data):
+    try:
+        base_url = BACKEND_URL.rstrip("/")
+        url = f"{base_url}/upsert-user"
+        payload = {"admin_enrollment": admin_enroll, "admin_password": admin_pass, "user_data": user_data}
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception: return False
+
+def upsert_routine_cloud(admin_enroll, admin_pass, routine_data):
+    try:
+        base_url = BACKEND_URL.rstrip("/")
+        url = f"{base_url}/upsert-routine"
+        payload = {"admin_enrollment": admin_enroll, "admin_password": admin_pass, "routine_data": routine_data}
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception: return False
+
+def delete_routine_cloud(admin_enroll, admin_pass, routine_id):
+    try:
+        base_url = BACKEND_URL.rstrip("/")
+        url = f"{base_url}/delete-routine"
+        payload = {"admin_enrollment": admin_enroll, "admin_password": admin_pass, "routine_id": routine_id}
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception: return False
+
 def pull_master_data_from_backend(enrollment: str, password: str):
     db = SessionLocal()
     from database import models
