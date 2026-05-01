@@ -45,11 +45,16 @@ def pull_master_data_from_backend(enrollment: str, password: str):
     from datetime import datetime
     
     try:
+        if not BACKEND_URL:
+            return {"status": "error", "message": "Backend URL is not configured. Please check your .env file."}
+            
         payload = {
             "enrollment": enrollment,
             "password": password
         }
-        resp = requests.post(f"{BACKEND_URL}/master-data", json=payload)
+        # Ensure we don't have double slashes if BACKEND_URL ends with one
+        request_url = f"{BACKEND_URL.rstrip('/')}/master-data"
+        resp = requests.post(request_url, json=payload)
         resp.raise_for_status()
         data = resp.json()
 
