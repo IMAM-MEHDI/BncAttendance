@@ -1565,7 +1565,11 @@ class MainWindow(QMainWindow):
             for user in users:
                 if not user.embedding: continue
                 db_emb = np.frombuffer(user.embedding, dtype=np.float32)
-                match, dist = self.engine.compare_embeddings(self.current_embedding, db_emb, threshold=0.8)
+                
+                # Normalize db_emb for consistent comparison
+                db_emb = db_emb / np.linalg.norm(db_emb)
+                
+                match, dist = self.engine.compare_embeddings(self.current_embedding, db_emb, threshold=1.0)
                 if match and dist < min_dist:
                     min_dist = dist
                     best_match = {
@@ -1574,9 +1578,15 @@ class MainWindow(QMainWindow):
                         "name": user.name,
                         "enrollment": user.enrollment
                     }
-            return best_match, min_dist
+        except Exception as e:
+            print(f"Identification Error: {e}")
         finally:
             db.close()
+            
+        if not best_match:
+            print(f"Face detected but no match found (min_dist observed: {min_dist})")
+            
+        return best_match, min_dist
 
     def add_to_live_monitor(self, user_data, box):
         if not (self.current_user.role == 'teacher' and hasattr(self, 'monitor_table')):
@@ -1631,10 +1641,12 @@ class MainWindow(QMainWindow):
                 self.add_to_live_monitor(best_match, box)
             elif res["status"] == "duplicate":
                 self.status_label.setText(f"{best_match['name']} already marked.")
+                self.show_notification(f"{best_match['name']} already marked today", is_error=False)
                 self.last_mark_time = time.time()
+                self.add_to_live_monitor(best_match, box)
             else:
-                # Likely 'error' meaning no routine
                 self.status_label.setText(res.get("message", "Error marking attendance"))
+                self.show_notification(res.get("message", "Error"), is_error=True)
                 self.last_mark_time = time.time()
         except Exception as e:
             self.status_label.setText("System Error: Check Logs")

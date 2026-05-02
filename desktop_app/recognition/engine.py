@@ -50,7 +50,9 @@ class FaceRecognitionEngine:
         
         with torch.no_grad():
             face = face.unsqueeze(0).to(self.device)
-            embedding = self.resnet(face).cpu().numpy()[0]
+            # Generate embedding and L2 normalize it
+            embedding_tensor = self.resnet(face)
+            embedding = torch.nn.functional.normalize(embedding_tensor, p=2, dim=1).cpu().numpy()[0]
             
         return embedding, boxes[0] if boxes is not None else None, is_live
 

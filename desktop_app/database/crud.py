@@ -158,13 +158,10 @@ def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float
             models.Routine.end_time >= current_time
         ).first()
 
-    if not routine:
-        return {"status": "error", "message": "No active routine found for this time"}
-
-    # Check if already marked for THIS specific routine today
+    # Use consistent UTC-based 'today start'
     import datetime as dt
-    # Use aware datetime for consistency
-    today_start = datetime.combine(now.date(), dt.time.min).replace(tzinfo=dt.timezone.utc)
+    now_utc = datetime.now(dt.timezone.utc)
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     
     existing = db.query(models.AttendanceRecord).filter(
         models.AttendanceRecord.user_id == user.user_id,
