@@ -52,11 +52,14 @@ def generate_pdf_report(title, records, filename="report.pdf", metadata=None):
     pdf.set_font('Arial', '', 9)
     for rec in records:
         paper = getattr(rec, 'paper', "General")
+        status = getattr(rec, 'status', "Present")
         pdf.cell(35, 10, str(rec.user.enrollment), 1)
         pdf.cell(50, 10, str(rec.user.name), 1)
         pdf.cell(45, 10, str(paper), 1)
-        pdf.cell(35, 10, rec.timestamp.strftime("%Y-%m-%d %H:%M"), 1)
-        pdf.cell(25, 10, "Present", 1, 1)
+        
+        time_val = rec.timestamp.strftime("%Y-%m-%d %H:%M") if hasattr(rec.timestamp, 'strftime') else str(rec.timestamp)
+        pdf.cell(35, 10, time_val, 1)
+        pdf.cell(25, 10, status, 1, 1)
 
     # Save
     save_path = os.path.join(os.path.expanduser("~"), "Downloads", filename)

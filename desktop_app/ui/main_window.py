@@ -160,12 +160,12 @@ class MainWindow(QMainWindow):
         print("UI Setup Complete.")
         
         # Threads
-        print("Starting Video Thread...")
+        print("Initializing Video Thread (Paused)...")
         self.cam_index = settings.KIOSK.get("default_camera_index", 0)
         self.thread = VideoThread(self.engine, self.cam_index)
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.face_detected_signal.connect(self.update_face_status)
-        self.thread.start()
+        # self.thread.start() # Removed autostart - camera default is OFF
         print("Startup sequence finished.")
 
         # Version Check (Manual)
@@ -452,11 +452,6 @@ class MainWindow(QMainWindow):
         
         content_layout.addWidget(footer)
         layout.addWidget(content_container)
-        # Initialize Thread (but don't start)
-        self.cam_index = 0
-        self.thread = VideoThread(self.engine, self.cam_index)
-        self.thread.change_pixmap_signal.connect(self.update_image)
-        self.thread.face_detected_signal.connect(self.update_face_status)
         
         # Panels
         self.setup_kiosk_panel()
@@ -1459,9 +1454,8 @@ class MainWindow(QMainWindow):
         if not session_to_export:
             QMessageBox.warning(self, "Error", "No active session to export.")
             return
-            
-        if self.monitor_table.rowCount() == 0:
-            QMessageBox.warning(self, self.STR_EXP_ERR, "No attendance records found for this session yet.")
+        if self.monitor_table.rowCount() == 0 and self.absent_table.rowCount() == 0:
+            QMessageBox.warning(self, self.STR_EXP_ERR, "No students found in the roster or marked present for this session.")
             return
             
         from utils.reports import generate_pdf_report
@@ -1469,24 +1463,31 @@ class MainWindow(QMainWindow):
         
         # Mocking record objects for the utility
         class MockRecord:
-            def __init__(self, enrollment, name, timestamp, paper):
+            def __init__(self, enrollment, name, timestamp, paper, status="Present"):
                 class MockUser:
                     def __init__(self, e, n): self.enrollment = e; self.name = n
                 self.user = MockUser(enrollment, name)
                 self.timestamp = timestamp
                 self.paper = paper
+                self.status = status
 
         records = []
+        # 1. Add Present Students
         for i in range(self.monitor_table.rowCount()):
             e = self.monitor_table.item(i, 1).text()
             n = self.monitor_table.item(i, 2).text()
             t_str = self.monitor_table.item(i, 3).text()
             try:
-                t = datetime.datetime.strptime(t_str, "%H:%M:%S")
+                t = datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(t_str, "%H:%M:%S").time())
             except:
                 t = datetime.datetime.now()
-            records.append(MockRecord(e, n, t, session_to_export['paper_name']))
+            records.append(MockRecord(e, n, t, session_to_export['paper_name'], status="Present"))
 
+        # 2. Add Absent Students
+        for i in range(self.absent_table.rowCount()):
+            e = self.absent_table.item(i, 0).text()
+            n = self.absent_table.item(i, 1).text()
+            records.append(MockRecord(e, n, datetime.datetime.now(), session_to_export['paper_name'], status="Absent"))
         title = f"Class Attendance: {session_to_export['paper_name']}"
         filename = f"Attendance_{session_to_export['paper_code']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
         
@@ -1598,15 +1599,16 @@ class MainWindow(QMainWindow):
         self.monitor_table.insertRow(row)
         
         # Face Crop Logic
-        face_img = self.thread.current_cv_img.copy()
-        if box is not None:
-            x1, y1, x2, y2 = [int(b) for b in box]
-            h, w = face_img.shape[:2]
-            x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
-            crop = face_img[y1:y2, x1:x2]
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
-            self.monitor_table.setItem(row, 0, QTableWidgetItem(QIcon(QPixmap.fromImage(q_img)), ""))
+        if hasattr(self.thread, 'current_cv_img') and self.thread.isRunning():
+            face_img = self.thread.current_cv_img.copy()
+            if box is not None:
+                x1, y1, x2, y2 = [int(b) for b in box]
+                h, w = face_img.shape[:2]
+                x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+                crop = face_img[y1:y2, x1:x2]
+                rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
+                self.monitor_table.setItem(row, 0, QTableWidgetItem(QIcon(QPixmap.fromImage(q_img)), ""))
 
         import time
         self.monitor_table.setItem(row, 1, QTableWidgetItem(user_data['enrollment']))
