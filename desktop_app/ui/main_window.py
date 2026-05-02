@@ -1602,23 +1602,28 @@ class MainWindow(QMainWindow):
 
         # 2. Duplicate Check for Present Table
         for i in range(self.monitor_table.rowCount()):
-            if self.monitor_table.item(i, 1).text() == user_data['enrollment']:
+            item = self.monitor_table.item(i, 1)
+            if item and item.text() == user_data['enrollment']:
                 return
 
-        row = self.monitor_table.rowCount()
+        # Insert at the top for better visibility
+        row = 0
         self.monitor_table.insertRow(row)
         
         # Face Crop Logic
         if hasattr(self.thread, 'current_cv_img') and self.thread.isRunning():
-            face_img = self.thread.current_cv_img.copy()
-            if box is not None:
-                x1, y1, x2, y2 = [int(b) for b in box]
-                h, w = face_img.shape[:2]
-                x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
-                crop = face_img[y1:y2, x1:x2]
-                rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-                q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
-                self.monitor_table.setItem(row, 0, QTableWidgetItem(QIcon(QPixmap.fromImage(q_img)), ""))
+            try:
+                face_img = self.thread.current_cv_img.copy()
+                if box is not None:
+                    x1, y1, x2, y2 = [int(b) for b in box]
+                    h, w = face_img.shape[:2]
+                    x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+                    crop = face_img[y1:y2, x1:x2]
+                    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                    q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
+                    self.monitor_table.setItem(row, 0, QTableWidgetItem(QIcon(QPixmap.fromImage(q_img)), ""))
+            except Exception as e:
+                print(f"Crop Error: {e}")
 
         import time
         self.monitor_table.setItem(row, 1, QTableWidgetItem(user_data['enrollment']))
