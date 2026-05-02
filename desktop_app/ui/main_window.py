@@ -492,9 +492,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(exit_action)
 
         about_action = QAction("&About", self)
-        about_action.triggered.connect(lambda: QMessageBox.about(self, "About BNC Attendance", "BNC Biometric Attendance System
-Version 1.1.0
-Developed for Enterprise Scale."))
+        about_action.triggered.connect(lambda: QMessageBox.about(self, "About BNC Attendance", "BNC Biometric Attendance System\nVersion 1.1.0\nDeveloped for Enterprise Scale."))
         help_menu.addAction(about_action)
 
         # Tool Bar
@@ -782,16 +780,10 @@ Developed for Enterprise Scale."))
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #38bdf8;")
         info_layout.addWidget(title)
         
-        desc = QLabel("This action will:
-
-"
-                     "1. Archive all current attendance records for selected students to the History database.
-"
-                     "2. Reset the current attendance tables for the new semester.
-"
-                     "3. Increment the semester field for all students in the selected department.
-
-"
+        desc = QLabel("This action will:\n\n"
+                     "1. Archive all current attendance records for selected students to the History database.\n"
+                     "2. Reset the current attendance tables for the new semester.\n"
+                     "3. Increment the semester field for all students in the selected department.\n\n"
                      "Note: Students will need to be re-verified in their new classes.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: #94a3b8; font-size: 14px; margin-top: 15px; margin-bottom: 20px;")
@@ -836,12 +828,8 @@ Developed for Enterprise Scale."))
         
         reply = QMessageBox.question(
             self, 'Confirm Promotion', 
-            f"Are you sure you want to promote students of Sem {current_sem} in {dept_name}?
-
-"
-            "This will ARCHIVE all their current attendance records and increment their semester.
-
-"
+            f"Are you sure you want to promote students of Sem {current_sem} in {dept_name}?\n\n"
+            "This will ARCHIVE all their current attendance records and increment their semester.\n\n"
             "THIS ACTION CANNOT BE UNDONE.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
             QMessageBox.StandardButton.No
@@ -853,8 +841,7 @@ Developed for Enterprise Scale."))
                 count = crud.promote_students(self.db, dept_id, current_sem)
                 if count > 0:
                     QMessageBox.information(self, "Promotion Successful", 
-                                          f"Successfully promoted {count} students in {dept_name}.
-"
+                                          f"Successfully promoted {count} students in {dept_name}.\n"
                                           "Attendance records have been moved to History.")
                     self.show_notification(f"Promoted {count} students to Semester {current_sem + 1}")
                 else:
@@ -1117,8 +1104,7 @@ Developed for Enterprise Scale."))
             
         def delete_staff():
             reply = QMessageBox.question(dialog, "Confirm Delete", 
-                                       f"Permanently delete {user.role.upper()} {user.name}?
-This cannot be undone.",
+                                       f"Permanently delete {user.role.upper()} {user.name}?\nThis cannot be undone.",
                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 crud.delete_user(self.db, eid)
@@ -1221,8 +1207,7 @@ This cannot be undone.",
         if not enroll: return
         
         reply = QMessageBox.question(self, "Confirm Delete", 
-                                   f"Are you sure you want to permanently delete student with Enrollment ID '{enroll}'?
-This will also remove all their attendance records.",
+                                   f"Are you sure you want to permanently delete student with Enrollment ID '{enroll}'?\nThis will also remove all their attendance records.",
                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply == QMessageBox.StandardButton.Yes:
@@ -1411,8 +1396,7 @@ This will also remove all their attendance records.",
         
         try:
             path = generate_pdf_report(title, records, filename, metadata=metadata)
-            QMessageBox.information(self, "Success", f"Analytics report exported to:
-{path}")
+            QMessageBox.information(self, "Success", f"Analytics report exported to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, self.STR_EXP_ERR, f"Could not export PDF: {str(e)}")
 
@@ -1475,8 +1459,7 @@ This will also remove all their attendance records.",
         
         try:
             path = generate_pdf_report(title, records, filename, metadata=metadata)
-            QMessageBox.information(self, "Success", f"Report exported to:
-{path}")
+            QMessageBox.information(self, "Success", f"Report exported to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, self.STR_EXP_ERR, f"Could not export PDF: {str(e)}")
 
@@ -1672,12 +1655,8 @@ This will also remove all their attendance records.",
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Information)
         msg.setWindowTitle("Update Available")
-        text = f"A new version ({info['version']}) is available!
-
-"
-        text += f"{info.get('message', '')}
-
-"
+        text = f"A new version ({info['version']}) is available!\n\n"
+        text += f"{info.get('message', '')}\n\n"
         text += "Would you like to download it now?"
         msg.setText(text)
         
@@ -1886,8 +1865,7 @@ This will also remove all their attendance records.",
         if not ok2 or not password: return
         
         reply = QMessageBox.question(self, "Confirm Full Sync", 
-                                   "This will upload ALL your local students, routines, and departments to the cloud.
-Existing records in the cloud will be updated. Proceed?",
+                                   "This will upload ALL your local students, routines, and departments to the cloud.\nExisting records in the cloud will be updated. Proceed?",
                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply == QMessageBox.StandardButton.Yes:
