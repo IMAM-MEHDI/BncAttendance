@@ -64,6 +64,21 @@ class PullMasterDataThread(QThread):
         except Exception as e:
             self.finished_signal.emit({"status": "error", "message": str(e)})
 
+class PushMasterDataThread(QThread):
+    finished_signal = pyqtSignal(dict)
+    def __init__(self, enrollment, password):
+        super().__init__()
+        self.enrollment = enrollment
+        self.password = password
+        
+    def run(self):
+        try:
+            from sync.client import push_master_data_to_backend
+            res = push_master_data_to_backend(self.enrollment, self.password)
+            self.finished_signal.emit(res)
+        except Exception as e:
+            self.finished_signal.emit({"status": "error", "message": str(e)})
+
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     face_detected_signal = pyqtSignal(object, object, bool)
@@ -657,77 +672,11 @@ class MainWindow(QMainWindow):
         btn_reg_staff.clicked.connect(self.register_staff)
         s_container.addWidget(btn_reg_staff)
         
-        # Cloud Sync Tab
-        cloud_tab = QWidget()
-        c_layout = QVBoxLayout(cloud_tab)
-        c_label = QLabel("Initial Setup: Pull Master Database from Supabase Cloud")
-        c_label.setStyleSheet("color: black; font-weight: bold; font-size: 16px; margin-bottom: 10px;")
-        btn_pull_cloud = QPushButton("Download Database from Cloud")
-        btn_pull_cloud.setObjectName("PrimaryBtn")
-        btn_pull_cloud.setMinimumHeight(60)
-        btn_pull_cloud.clicked.connect(self.pull_database_from_cloud)
-        c_layout.addWidget(c_label)
-        c_layout.addWidget(btn_pull_cloud)
-        c_layout.addStretch()
-
-        tabs.addTab(wrap_scroll(dept_tab), "Departments")
-        tabs.addTab(wrap_scroll(staff_tab), "Staff Registration")
-        tabs.addTab(wrap_scroll(cloud_tab), "Cloud Sync")
+        tabs.addTab(self.create_cloud_sync_tab(), "Cloud Sync Settings")
         tabs.addTab(self.create_camera_control_tab(), "Camera Control")
         layout.addWidget(tabs)
         self.stack.addWidget(self.admin_panel)
         self.refresh_admin_data()
-
-    def pull_database_from_cloud(self):
-        from PyQt6.QtWidgets import QDialog, QLineEdit, QFormLayout, QVBoxLayout
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Connect to Backend Database")
-        dialog.setMinimumWidth(400)
-        dialog.setStyleSheet("QLabel { color: black; } QLineEdit { color: black; background-color: white; padding: 5px; }")
-        
-        d_layout = QVBoxLayout(dialog)
-        form_widget = QWidget(); f_layout = QFormLayout(form_widget)
-        
-        url_input = QLineEdit()
-        url_input.setPlaceholderText("e.g. admin")
-        key_input = QLineEdit()
-        key_input.setPlaceholderText("Admin Password")
-        key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        
-        f_layout.addRow("Admin Enrollment ID:", url_input)
-        f_layout.addRow("Admin Password:", key_input)
-        d_layout.addWidget(form_widget)
-        
-        btn_pull = QPushButton("Authenticate and Download")
-        btn_pull.setObjectName("PrimaryBtn")
-        d_layout.addWidget(btn_pull)
-        
-        def execute_pull():
-            enrollment = url_input.text().strip()
-            password = key_input.text().strip()
-            if not enrollment or not password:
-                QMessageBox.warning(dialog, "Error", "Both Enrollment ID and Password are required.")
-                return
-            
-            btn_pull.setText("Downloading... Please wait.")
-            btn_pull.setEnabled(False)
-            
-            self.pull_thread = PullMasterDataThread(enrollment, password)
-            def on_pull_finished(res):
-                if res.get("status") == "success":
-                    QMessageBox.information(dialog, "Success", res.get("message", "Success"))
-                    self.refresh_admin_data()
-                    dialog.accept()
-                else:
-                    QMessageBox.critical(dialog, "Error", res.get("message", "Unknown error"))
-                    btn_pull.setText("Authenticate and Download")
-                    btn_pull.setEnabled(True)
-                    
-            self.pull_thread.finished_signal.connect(on_pull_finished)
-            self.pull_thread.start()
-                
-        btn_pull.clicked.connect(execute_pull)
-        dialog.exec()
 
     def toggle_camera(self):
         if self.thread.isRunning():
@@ -808,6 +757,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(wrap_scroll(update_tab), "Update Students")
         tabs.addTab(self.create_promotion_tab(), "Student Promotion")
         tabs.addTab(self.create_reports_tab(), "Attendance Analytics")
+        tabs.addTab(self.create_cloud_sync_tab(), "Cloud Sync Settings")
         tabs.addTab(self.create_camera_control_tab(), "Camera Control")
         layout.addWidget(tabs)
         self.stack.addWidget(self.hod_panel)
@@ -1840,6 +1790,92 @@ class MainWindow(QMainWindow):
             
             self.refresh_routine_data()
             QMessageBox.information(self, "Success", "Routine entry deleted and sync started.")
+
+
+    def create_cloud_sync_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        card = QFrame()
+        card.setObjectName("MainCard")
+        card.setStyleSheet("padding: 25px;")
+        c_layout = QVBoxLayout(card)
+        
+        title = QLabel("Cloud Synchronization Management")
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #38bdf8;")
+        c_layout.addWidget(title)
+        
+        desc = QLabel("Synchronize your local database with the central cloud server.")
+        desc.setStyleSheet("color: #94a3b8; font-size: 14px; margin-bottom: 20px;")
+        c_layout.addWidget(desc)
+        
+        # Pull Section
+        pull_group = QFrame()
+        pull_group.setStyleSheet("background: #0f172a; border-radius: 12px; padding: 15px;")
+        pg_layout = QVBoxLayout(pull_group)
+        pg_layout.addWidget(QLabel("<b>Option A: Download Master Data (Pull)</b>"))
+        pg_layout.addWidget(QLabel("Use this if you want to download students/routines already existing in the cloud."))
+        
+        btn_pull = QPushButton(" Pull Master Data from Cloud")
+        btn_pull.setObjectName("PrimaryBtn")
+        btn_pull.clicked.connect(self.pull_master_data_dialog)
+        pg_layout.addWidget(btn_pull)
+        c_layout.addWidget(pull_group)
+        
+        c_layout.addSpacing(20)
+        
+        # Push Section
+        push_group = QFrame()
+        push_group.setStyleSheet("background: #0f172a; border-radius: 12px; padding: 15px;")
+        ps_layout = QVBoxLayout(push_group)
+        ps_layout.addWidget(QLabel("<b>Option B: Upload Local Data (Full Sync)</b>"))
+        ps_layout.addWidget(QLabel("Use this to push ALL your local students, routines, and departments to the cloud."))
+        
+        btn_push = QPushButton(" Full Sync: Push All Data to Cloud")
+        btn_push.setObjectName("SuccessBtn")
+        btn_push.clicked.connect(self.push_master_data_dialog)
+        ps_layout.addWidget(btn_push)
+        c_layout.addWidget(push_group)
+        
+        layout.addWidget(card)
+        layout.addStretch()
+        return tab
+
+    def pull_master_data_dialog(self):
+        from PyQt6.QtWidgets import QInputDialog
+        enrollment, ok1 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Enrollment:")
+        if not ok1 or not enrollment: return
+        password, ok2 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Password:", QLineEdit.EchoMode.Password)
+        if not ok2 or not password: return
+        
+        self.pull_thread = PullMasterDataThread(enrollment, password)
+        self.pull_thread.finished_signal.connect(self.handle_sync_result_dict)
+        self.pull_thread.start()
+        self.show_notification("Pulling cloud data...")
+
+    def push_master_data_dialog(self):
+        from PyQt6.QtWidgets import QInputDialog
+        enrollment, ok1 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Enrollment:")
+        if not ok1 or not enrollment: return
+        password, ok2 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Password:", QLineEdit.EchoMode.Password)
+        if not ok2 or not password: return
+        
+        reply = QMessageBox.question(self, "Confirm Full Sync", 
+                                   "This will upload ALL your local students, routines, and departments to the cloud.\nExisting records in the cloud will be updated. Proceed?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.push_thread = PushMasterDataThread(enrollment, password)
+            self.push_thread.finished_signal.connect(self.handle_sync_result_dict)
+            self.push_thread.start()
+            self.show_notification("Pushing local data to cloud...")
+
+    def handle_sync_result_dict(self, res):
+        if res.get("status") == "success":
+            QMessageBox.information(self, "Sync Success", res.get("message", "Sync completed successfully!"))
+            self.refresh_admin_data()
+        else:
+            QMessageBox.critical(self, "Sync Error", res.get("message", "Sync failed."))
 
     def handle_logout(self):
         self.logout_signal.emit()

@@ -148,5 +148,55 @@ def pull_master_data_from_backend(enrollment: str, password: str):
     finally:
         db.close()
 
+def push_master_data_to_backend(admin_enroll: str, admin_password: str):
+    db = SessionLocal()
+    from database import models
+    from datetime import time
+    
+    try:
+        if not BACKEND_URL:
+            return {"status": "error", "message": "Backend URL is not configured."}
+            
+        # 1. Fetch all local data
+        departments = db.query(models.Department).all()
+        subjects = db.query(models.Subject).all()
+        users = db.query(models.User).all()
+        routines = db.query(models.Routine).all()
+
+        # 2. Format data for push
+        def dict_from_obj(obj, cols):
+            d = {}
+            for c in cols:
+                val = getattr(obj, c)
+                if isinstance(val, bytes):
+                    d[c] = val.hex() 
+                elif isinstance(val, time):
+                    d[c] = val.strftime("%H:%M:%S")
+                else:
+                    d[c] = val
+            return d
+
+        payload = {
+            "admin_enrollment": admin_enroll,
+            "admin_password": admin_password,
+            "data": {
+                "departments": [dict_from_obj(d, ['id', 'name']) for d in departments],
+                "subjects": [dict_from_obj(s, ['id', 'code', 'name']) for s in subjects],
+                "users": [dict_from_obj(u, ['id', 'user_id', 'name', 'enrollment', 'role', 'semester', 'course_name', 'major_minor', 'password_hash', 'department_id', 'embedding']) for u in users],
+                "routines": [dict_from_obj(r, ['id', 'day_of_week', 'start_time', 'end_time', 'semester', 'subject_id', 'teacher_id', 'department_id']) for r in routines]
+            }
+        }
+
+        request_url = f"{BACKEND_URL.rstrip('/')}/bulk-master-push"
+        resp = requests.post(request_url, json=payload)
+        resp.raise_for_status()
+        
+        return {"status": "success", "message": "Local database synchronized to Cloud successfully!"}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     sync_data()

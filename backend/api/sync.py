@@ -171,4 +171,59 @@ def delete_routine(request: DeleteRoutineRequest, db: Session = Depends(get_db))
         db.commit()
     return {"status": "success"}
 
+@router.post("/bulk-master-push")
+def bulk_master_push(request: dict, db: Session = Depends(get_db)):
+    """Bulk push Departments, Subjects, Users, and Routines from local to cloud."""
+    # 1. Auth
+    admin_enroll = request.get("admin_enrollment")
+    admin_pass = request.get("admin_password")
+    admin = db.query(models.User).filter(models.User.enrollment == admin_enroll, models.User.role.in_(['admin', 'hod'])).first()
+    if not admin or not bcrypt.checkpw(admin_pass.encode('utf-8'), admin.password_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
+    data = request.get("data", {})
+    
+    # 2. Sync Departments
+    for dept in data.get("departments", []):
+        existing = db.query(models.Department).filter(models.Department.id == dept['id']).first()
+        if existing: existing.name = dept['name']
+        else: db.add(models.Department(**dept))
+    db.flush()
+
+    # 3. Sync Subjects
+    for sub in data.get("subjects", []):
+        existing = db.query(models.Subject).filter(models.Subject.id == sub['id']).first()
+        if existing: 
+            existing.code = sub['code']
+            existing.name = sub['name']
+        else: db.add(models.Subject(**sub))
+    db.flush()
+
+    # 4. Sync Users
+    for u in data.get("users", []):
+        if u.get('embedding'):
+            u['embedding'] = bytes.fromhex(u['embedding'])
+        
+        existing = db.query(models.User).filter(models.User.enrollment == u['enrollment']).first()
+        if existing:
+            for k, v in u.items(): setattr(existing, k, v)
+        else:
+            db.add(models.User(**u))
+    db.flush()
+
+    # 5. Sync Routines
+    from datetime import datetime
+    for r in data.get("routines", []):
+        if r.get("start_time") and isinstance(r["start_time"], str):
+            r["start_time"] = datetime.strptime(r["start_time"], "%H:%M:%S").time()
+        if r.get("end_time") and isinstance(r["end_time"], str):
+            r["end_time"] = datetime.strptime(r["end_time"], "%H:%M:%S").time()
+            
+        existing = db.query(models.Routine).filter(models.Routine.id == r['id']).first()
+        if existing:
+            for k, v in r.items(): setattr(existing, k, v)
+        else:
+            db.add(models.Routine(**r))
+    
+    db.commit()
+    return {"status": "success", "message": "Cloud database synchronized successfully!"}
