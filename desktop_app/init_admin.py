@@ -1,10 +1,8 @@
 import os
 import uuid
-from dotenv import load_dotenv
+from utils.config import settings
 from database.session import SessionLocal, init_db
 from database import crud
-
-load_dotenv()
 
 def initialize():
     init_db()
@@ -14,8 +12,8 @@ def initialize():
     admin = crud.get_user_by_enrollment(db, "admin")
     if not admin:
         print("Creating default admin user...")
-        # Get password from environment or use a safe fallback (though env is preferred)
-        admin_pw = os.getenv("DEFAULT_ADMIN_PASSWORD")
+        # Use settings (which handles .env path for PyInstaller)
+        admin_pw = settings.DEFAULT_ADMIN_PASSWORD
         if not admin_pw:
             print("WARNING: DEFAULT_ADMIN_PASSWORD not set in .env! Cannot create admin user.")
             return
@@ -30,7 +28,16 @@ def initialize():
         )
         print("Admin user created successfully.")
     else:
-        print("Admin already exists.")
+        # If admin exists, ensure the password is up to date with .env
+        # This helps if the user changed the .env but the DB was already initialized
+        admin_pw = settings.DEFAULT_ADMIN_PASSWORD
+        if admin_pw and not crud.verify_password(admin_pw, admin.password_hash):
+            print("Updating admin password to match .env...")
+            admin.password_hash = crud.hash_password(admin_pw)
+            db.commit()
+            print("Admin password updated.")
+        else:
+            print("Admin already exists and password is correct.")
     
     db.close()
 

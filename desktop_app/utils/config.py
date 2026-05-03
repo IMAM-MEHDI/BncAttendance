@@ -53,6 +53,8 @@ class Config:
         
         self.BACKEND_SYNC_URL = os.getenv("BACKEND_SYNC_URL")
         self.DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD")
+        self.CLOUD_ADMIN_ENROLLMENT = os.getenv("CLOUD_ADMIN_ENROLLMENT", "admin")
+        self.CLOUD_ADMIN_PASSWORD = os.getenv("CLOUD_ADMIN_PASSWORD", "")
         
         # Derived values
         self.BACKEND_BASE_URL = self.BACKEND_SYNC_URL.split("/api/v1/")[0] if self.BACKEND_SYNC_URL else "http://localhost:8000"

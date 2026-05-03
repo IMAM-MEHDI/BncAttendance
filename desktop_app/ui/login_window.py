@@ -13,7 +13,8 @@ class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("BNC Attendance System - Login")
-        self.setFixedSize(400, 500)
+        self.setMinimumSize(380, 480)
+        self.resize(450, 560)
         self.db = SessionLocal()
         self.setup_ui()
 
