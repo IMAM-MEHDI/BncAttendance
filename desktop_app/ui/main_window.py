@@ -1647,6 +1647,12 @@ class MainWindow(QMainWindow):
         
         if name and enroll:
             try:
+                # 1. Pre-check for duplicate enrollment ID locally
+                existing = crud.get_user_by_enrollment(self.db, enroll)
+                if existing:
+                    QMessageBox.warning(self, "Duplicate Error", f"Enrollment ID '{enroll}' is already registered to '{existing.name}'.")
+                    return
+
                 crud.create_user(self.db, str(uuid.uuid4()), name, enroll, role='student', 
                                  department_id=self.current_user.department_id,
                                  semester=sem, course_name=course, major_minor=major,
@@ -1667,8 +1673,8 @@ class MainWindow(QMainWindow):
                 self.stu_name.clear(); self.stu_enroll.clear()
             except Exception as e:
                 self.db.rollback()
-                if "UniqueViolation" in str(e) or "already exists" in str(e).lower():
-                    QMessageBox.warning(self, "Duplicate Error", f"Enrollment ID '{enroll}' is already registered to another student.")
+                if any(x in str(e) for x in ["UniqueViolation", "already exists", "UNIQUE constraint failed"]):
+                    QMessageBox.warning(self, "Duplicate Error", f"Enrollment ID '{enroll}' is already registered in the system.")
                 else:
                     QMessageBox.critical(self, "Enrollment Error", f"Failed to register student: {e}")
 
