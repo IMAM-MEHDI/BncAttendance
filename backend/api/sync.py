@@ -191,16 +191,11 @@ def bulk_master_push(request: dict, db: Session = Depends(get_db)):
         else: db.add(models.Subject(**sub))
     db.flush()
 
-    # 4. Sync Users
+    # 4. Sync Users — use merge() to handle INSERT or UPDATE by PK
     for u in data.get("users", []):
         if u.get('embedding'):
             u['embedding'] = bytes.fromhex(u['embedding'])
-        
-        existing = db.query(models.User).filter(models.User.enrollment == u['enrollment']).first()
-        if existing:
-            for k, v in u.items(): setattr(existing, k, v)
-        else:
-            db.add(models.User(**u))
+        db.merge(models.User(**u))
     db.flush()
 
     # 5. Sync Routines
