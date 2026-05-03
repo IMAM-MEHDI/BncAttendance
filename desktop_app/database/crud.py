@@ -1,4 +1,5 @@
 import datetime
+from datetime import datetime, timezone, timedelta
 import numpy as np
 import bcrypt
 from sqlalchemy.orm import Session
@@ -146,7 +147,6 @@ def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float
     
     if not routine:
         # Find active routine (class happening now)
-        from datetime import datetime
         now = datetime.now()
         day = now.strftime("%A")
         current_time = now.time()
@@ -162,8 +162,7 @@ def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float
         return {"status": "error", "message": "No active class scheduled right now"}
 
     # Use consistent UTC-based 'today start'
-    import datetime as dt
-    now_utc = datetime.now(dt.timezone.utc)
+    now_utc = datetime.now(timezone.utc)
     today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     
     existing = db.query(models.AttendanceRecord).filter(
@@ -198,7 +197,6 @@ def mark_records_synced(db: Session, record_ids: list):
 
 def get_filtered_attendance(db: Session, dept_id: int, semester: int = None, days: int = 30):
     from sqlalchemy.orm import joinedload
-    from datetime import datetime, timedelta, timezone
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     
     query = db.query(models.AttendanceRecord).options(
