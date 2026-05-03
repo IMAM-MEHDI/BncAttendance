@@ -22,41 +22,65 @@ def get_db():
 def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
     """Receive attendance records from local devices and save to central DB."""
     try:
+        from datetime import datetime, timezone
         new_records = []
-        
-        # Pre-fetch valid user_ids and routine_ids to avoid repeated DB lookups if batch is large
-        # but for small batches, simple check is fine.
+        skipped_duplicates = 0
+
         for rec in request.records:
-            # 1. Verify User exists
-            exists = db.query(models.User).filter(models.User.user_id == rec.user_id).first()
-            if not exists:
+            # 1. Verify User exists in cloud
+            user = db.query(models.User).filter(models.User.user_id == rec.user_id).first()
+            if not user:
                 print(f"Skipping record for non-existent user: {rec.user_id}")
                 continue
 
-            # 2. Verify Routine exists (if provided)
+            # 2. Resolve routine — if not in cloud, save record with routine_id=None
+            #    (never drop attendance data just because routine isn't synced yet)
+            routine_id = None
             if rec.routine_id:
                 r_exists = db.query(models.Routine).filter(models.Routine.id == rec.routine_id).first()
-                if not r_exists:
-                    print(f"Skipping record for non-existent routine: {rec.routine_id}")
-                    continue
+                if r_exists:
+                    routine_id = rec.routine_id
+                else:
+                    print(f"Routine {rec.routine_id} not in cloud — saving record with routine_id=None")
 
-            # Create new record object
+            # 3. Duplicate check: same user + same routine + same calendar day
+            try:
+                rec_ts = rec.timestamp
+                if hasattr(rec_ts, 'date'):
+                    rec_date = rec_ts.date()
+                else:
+                    rec_date = datetime.fromisoformat(str(rec_ts)).date()
+
+                existing = db.query(models.AttendanceRecord).filter(
+                    models.AttendanceRecord.user_id == rec.user_id,
+                    models.AttendanceRecord.routine_id == routine_id,
+                ).all()
+                already_exists = any(
+                    r.timestamp.date() == rec_date for r in existing
+                    if r.timestamp is not None
+                )
+                if already_exists:
+                    skipped_duplicates += 1
+                    continue
+            except Exception as dup_err:
+                print(f"Duplicate check failed for {rec.user_id}: {dup_err} — inserting anyway")
+
             record = models.AttendanceRecord(
                 user_id=rec.user_id,
-                routine_id=rec.routine_id,
+                routine_id=routine_id,
                 timestamp=rec.timestamp,
                 device_id=rec.device_id,
                 confidence=rec.confidence,
-                sync_status=True # It's now in the cloud
+                sync_status=True
             )
             new_records.append(record)
-            
+
         if new_records:
             db.add_all(new_records)
             db.commit()
-            
-        print(f"Successfully saved {len(new_records)} records to cloud. (Skipped {len(request.records) - len(new_records)})")
-        return {"status": "success", "synced_count": len(new_records)}
+
+        print(f"Saved {len(new_records)} records. Skipped duplicates: {skipped_duplicates}. Total received: {len(request.records)}")
+        return {"status": "success", "synced_count": len(new_records), "duplicates_skipped": skipped_duplicates}
     except Exception as e:
         db.rollback()
         print(f"Error during record sync: {e}")
@@ -198,19 +222,14 @@ def bulk_master_push(request: dict, db: Session = Depends(get_db)):
         db.merge(models.User(**u))
     db.flush()
 
-    # 5. Sync Routines
+    # 5. Sync Routines — use merge() to handle INSERT or UPDATE by PK
     from datetime import datetime
     for r in data.get("routines", []):
         if r.get("start_time") and isinstance(r["start_time"], str):
             r["start_time"] = datetime.strptime(r["start_time"], "%H:%M:%S").time()
         if r.get("end_time") and isinstance(r["end_time"], str):
             r["end_time"] = datetime.strptime(r["end_time"], "%H:%M:%S").time()
-            
-        existing = db.query(models.Routine).filter(models.Routine.id == r['id']).first()
-        if existing:
-            for k, v in r.items(): setattr(existing, k, v)
-        else:
-            db.add(models.Routine(**r))
+        db.merge(models.Routine(**r))
     
     db.commit()
     return {"status": "success", "message": "Cloud database synchronized successfully!"}
