@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import Annotated
 from database.session import SessionLocal
@@ -10,6 +11,19 @@ from database import models
 import bcrypt
 
 router = APIRouter()
+
+def reset_sequences(db: Session):
+    """After bulk inserts with explicit IDs, resync Postgres sequences to avoid collisions."""
+    tables = ['users', 'departments', 'subjects', 'routines', 'attendance_records']
+    for table in tables:
+        try:
+            db.execute(text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)"
+            ))
+        except Exception as e:
+            print(f"Sequence reset warning for {table}: {e}")
+    db.commit()
 
 def get_db():
     db = SessionLocal()
@@ -138,9 +152,16 @@ def upsert_user(request: UserUpsertRequest, db: Session = Depends(get_db)):
     if 'embedding' in data and data['embedding']:
         data['embedding'] = bytes.fromhex(data['embedding'])
 
-    # Use merge() — INSERT if PK absent, UPDATE if PK present. Eliminates UniqueViolation.
-    user_obj = models.User(**data)
-    db.merge(user_obj)
+    # Never trust the local integer 'id' — Postgres sequence may not know about it.
+    # Identify by user_id (UUID) which is always unique and stable.
+    data.pop('id', None)  # Let Postgres manage the serial PK
+    uid = data.get('user_id')
+    existing = db.query(models.User).filter(models.User.user_id == uid).first()
+    if existing:
+        for k, v in data.items():
+            setattr(existing, k, v)
+    else:
+        db.add(models.User(**data))
     db.commit()
     return {"status": "success"}
 
@@ -232,4 +253,7 @@ def bulk_master_push(request: dict, db: Session = Depends(get_db)):
         db.merge(models.Routine(**r))
     
     db.commit()
+    # Reset Postgres sequences after bulk inserts with explicit IDs.
+    # Without this, next auto-increment would conflict with the manually inserted IDs.
+    reset_sequences(db)
     return {"status": "success", "message": "Cloud database synchronized successfully!"}
