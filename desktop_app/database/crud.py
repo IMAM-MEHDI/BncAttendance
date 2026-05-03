@@ -158,6 +158,9 @@ def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float
             models.Routine.end_time >= current_time
         ).first()
 
+    if not routine:
+        return {"status": "error", "message": "No active class scheduled right now"}
+
     # Use consistent UTC-based 'today start'
     import datetime as dt
     now_utc = datetime.now(dt.timezone.utc)
@@ -184,7 +187,7 @@ def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float
     db.add(record)
     db.commit()
     db.refresh(record)
-    return {"status": "success", "message": "Attendance marked", "routine": routine.subject.name}
+    return {"status": "success", "message": "Attendance marked", "routine": routine.subject.name if routine and routine.subject else "Class"}
 
 def get_unsynced_records(db: Session):
     return db.query(models.AttendanceRecord).filter(models.AttendanceRecord.sync_status == False).all()

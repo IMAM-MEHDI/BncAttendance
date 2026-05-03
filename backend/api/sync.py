@@ -113,14 +113,10 @@ def upsert_user(request: UserUpsertRequest, db: Session = Depends(get_db)):
     data = request.user_data
     if 'embedding' in data and data['embedding']:
         data['embedding'] = bytes.fromhex(data['embedding'])
-    
-    existing = db.query(models.User).filter(models.User.enrollment == data['enrollment']).first()
-    if existing:
-        for k, v in data.items(): setattr(existing, k, v)
-    else:
-        new_user = models.User(**data)
-        db.add(new_user)
-    
+
+    # Use merge() — INSERT if PK absent, UPDATE if PK present. Eliminates UniqueViolation.
+    user_obj = models.User(**data)
+    db.merge(user_obj)
     db.commit()
     return {"status": "success"}
 
@@ -143,19 +139,15 @@ def upsert_routine(request: RoutineUpsertRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     data = request.routine_data
-    # For routines, we usually identify by some combination or just upsert by ID if provided
-    # But routines in cloud might have different IDs. 
-    # For now, let's assume the local ID is shared or we use a unique constraint.
-    # Simple approach: If ID exists in cloud, update.
-    rid = data.get('id')
-    existing = db.query(models.Routine).filter(models.Routine.id == rid).first() if rid else None
-    
-    if existing:
-        for k, v in data.items(): setattr(existing, k, v)
-    else:
-        new_r = models.Routine(**data)
-        db.add(new_r)
-    
+    from datetime import datetime as _dt
+    if data.get('start_time') and isinstance(data['start_time'], str):
+        data['start_time'] = _dt.strptime(data['start_time'], "%H:%M:%S").time()
+    if data.get('end_time') and isinstance(data['end_time'], str):
+        data['end_time'] = _dt.strptime(data['end_time'], "%H:%M:%S").time()
+
+    # Use merge() — INSERT if PK absent, UPDATE if PK present.
+    routine_obj = models.Routine(**data)
+    db.merge(routine_obj)
     db.commit()
     return {"status": "success"}
 

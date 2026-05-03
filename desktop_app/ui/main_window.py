@@ -131,6 +131,7 @@ class MainWindow(QMainWindow):
             
         self.setWindowTitle(f"BNC EMS - Logged in as {self.current_user.name} ({self.current_user.role.upper()})")
         self.resize(1200, 900)
+        self.setMinimumSize(900, 620)   # Ensures layout works on smaller monitors
         
         # Set App Icon
         icon_path = get_resource_path(os.path.join("assets", "logo.png"))
@@ -139,7 +140,9 @@ class MainWindow(QMainWindow):
 
         print("Initializing Engine...")
         self.engine = FaceRecognitionEngine()
-        self.session_cloud_pw = None # Session cache for cloud sync
+        # Cloud sync credentials — pre-loaded from .env so no manual prompt needed
+        self.session_cloud_pw = settings.CLOUD_ADMIN_PASSWORD or None
+        self.session_cloud_enrollment = settings.CLOUD_ADMIN_ENROLLMENT or "admin"
         self.active_session = None # For Teachers: {paper_name, paper_code, semester}
         self.current_embedding = None
         self.is_live = False
@@ -151,21 +154,46 @@ class MainWindow(QMainWindow):
         self.STR_EXP_ERR = "Export Error"
         # Improved dialog style with high contrast
         self.STR_DIALOG_STYLE = """
-            QDialog { background-color: #f8fafc; }
-            QLabel { color: #1e293b; font-weight: 500; }
-            QLineEdit, QComboBox, QTimeEdit { 
-                color: #0f172a; 
-                background-color: #ffffff; 
+            QDialog {
+                background-color: #f8fafc;
+            }
+            QLabel {
+                color: #1e293b;
+                font-weight: 500;
+            }
+            QLineEdit, QComboBox, QTimeEdit {
+                color: #0f172a;
+                background-color: #ffffff;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
                 padding: 8px;
             }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #1e293b;
+                selection-background-color: #0ea5e9;
+                selection-color: #ffffff;
+            }
+            QPushButton {
+                background-color: #e2e8f0;
+                color: #1e293b;
+                border-radius: 6px;
+                font-weight: 600;
+                padding: 9px 18px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #cbd5e1;
+            }
             QPushButton#PrimaryBtn {
                 background-color: #0ea5e9;
-                color: white;
+                color: #ffffff;
                 border-radius: 6px;
                 font-weight: 600;
                 padding: 10px;
+            }
+            QPushButton#PrimaryBtn:hover {
+                background-color: #38bdf8;
             }
         """
 
@@ -350,14 +378,115 @@ class MainWindow(QMainWindow):
             QLabel {{ color: #f8fafc; }}
             QMessageBox QLabel {{ color: #0f172a; }}
             QScrollArea {{ border: none; background: transparent; }}
-            
+
             /* High Contrast for Admin Inputs */
             QLineEdit#AdminInput {{
                 background-color: #ffffff;
                 color: #0f172a;
                 border: 2px solid #38bdf8;
             }}
+
+            /* ── ComboBox dropdown list (dark theme) ─────────────────── */
+            QComboBox QAbstractItemView {{
+                background-color: #1e293b;
+                color: #f1f5f9;
+                selection-background-color: #0ea5e9;
+                selection-color: #ffffff;
+                border: 1px solid #334155;
+                outline: none;
+            }}
+
+            /* ── Light-panel override (white-bg forms) ───────────────── */
+            /* Applied via setObjectName('LightPanel') on each white container */
+            QWidget#LightPanel, QFrame#LightPanel {{
+                background-color: #ffffff;
+                border-radius: 12px;
+                border: 1px solid #dcdde1;
+            }}
+            QWidget#LightPanel QLabel, QFrame#LightPanel QLabel {{
+                color: #1e293b;
+            }}
+            QWidget#LightPanel QLineEdit, QFrame#LightPanel QLineEdit {{
+                background-color: #f8fafc;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+            }}
+            QWidget#LightPanel QComboBox, QFrame#LightPanel QComboBox {{
+                background-color: #f8fafc;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+            }}
+            QWidget#LightPanel QComboBox QAbstractItemView,
+            QFrame#LightPanel QComboBox QAbstractItemView {{
+                background-color: #ffffff;
+                color: #1e293b;
+                selection-background-color: #0ea5e9;
+                selection-color: #ffffff;
+            }}
         """)
+
+        # ── Application-level popup/dialog styles ───────────────────────────
+        # QMessageBox, QInputDialog, and other top-level system dialogs are NOT
+        # children of MainWindow, so they ignore self.setStyleSheet().  They
+        # must be styled via QApplication to guarantee readable text.
+        from PyQt6.QtWidgets import QApplication
+        _popup_style = """
+            QMessageBox {
+                background-color: #f8fafc;
+            }
+            QMessageBox QLabel {
+                color: #1e293b;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QMessageBox QPushButton {
+                background-color: #0ea5e9;
+                color: #ffffff;
+                border-radius: 6px;
+                padding: 8px 22px;
+                font-weight: 600;
+                min-width: 80px;
+                border: none;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #38bdf8;
+            }
+            QMessageBox QPushButton:pressed {
+                background-color: #0284c7;
+            }
+            QInputDialog {
+                background-color: #f8fafc;
+            }
+            QInputDialog QLabel {
+                color: #1e293b;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QInputDialog QLineEdit {
+                background-color: #ffffff;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QInputDialog QPushButton {
+                background-color: #0ea5e9;
+                color: #ffffff;
+                border-radius: 6px;
+                padding: 8px 22px;
+                font-weight: 600;
+                min-width: 80px;
+                border: none;
+            }
+            QInputDialog QPushButton:hover {
+                background-color: #38bdf8;
+            }
+        """
+        app_inst = QApplication.instance()
+        if app_inst:
+            # Merge with any existing app-level stylesheet
+            existing = app_inst.styleSheet()
+            app_inst.setStyleSheet(existing + _popup_style)
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -370,7 +499,8 @@ class MainWindow(QMainWindow):
         # 1. Sidebar
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(260)
+        sidebar.setMinimumWidth(220)
+        sidebar.setMaximumWidth(280)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 20, 0, 20)
         
@@ -400,7 +530,9 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons = {}
         self.NAV_KIOSK = "Attendance Kiosk"
-        self.add_nav_item(sidebar_layout, self.NAV_KIOSK, "btn_kiosk")
+        
+        if self.current_user.role != 'admin':
+            self.add_nav_item(sidebar_layout, self.NAV_KIOSK, "btn_kiosk")
         
         if self.current_user.role == 'admin':
             self.add_nav_item(sidebar_layout, "Admin Panel", "btn_admin")
@@ -433,10 +565,11 @@ class MainWindow(QMainWindow):
         banner_label = QLabel()
         banner_path = get_resource_path(os.path.join("assets", "banner.png"))
         if os.path.exists(banner_path):
-            banner_pix = QPixmap(banner_path).scaled(1000, 150, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            banner_label.setPixmap(banner_pix)
-            banner_label.setFixedHeight(150)
+            banner_label.setMaximumHeight(150)
+            banner_label.setMinimumHeight(60)
             banner_label.setScaledContents(True)
+            banner_pix = QPixmap(banner_path)
+            banner_label.setPixmap(banner_pix)
         content_layout.addWidget(banner_label)
 
         # Main Workspace
@@ -469,13 +602,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(content_container)
         
         # Panels
-        self.setup_kiosk_panel()
+        if self.current_user.role != 'admin':
+            self.setup_kiosk_panel()
+            
         if self.current_user.role == 'admin': self.setup_admin_panel()
         if self.current_user.role == 'hod': self.setup_hod_panel()
         if self.current_user.role == 'teacher': self.setup_teacher_panel()
         
         # Default View
-        self.switch_panel("Attendance Kiosk")
+        if self.current_user.role == 'admin':
+            self.switch_panel("Admin Panel")
+        else:
+            self.switch_panel(self.NAV_KIOSK)
 
     def init_standard_ui(self):
         # Menu Bar
@@ -531,6 +669,29 @@ class MainWindow(QMainWindow):
         if is_error:
             print(f"NOTIFICATION ERROR: {message}")
 
+    def _update_kiosk_face_status(self):
+        """Keep the Student Enrollment face-ready indicator current."""
+        if not hasattr(self, 'kiosk_face_status'):
+            return
+        face_ready = (
+            getattr(self, 'current_embedding', None) is not None
+            and getattr(self, 'is_live', False)
+        )
+        if face_ready:
+            self.kiosk_face_status.setText("✅  Face captured and live — fill in the form and click Register Student")
+            self.kiosk_face_status.setStyleSheet(
+                "background: #14532d; color: #86efac; font-weight: bold; font-size: 12px; "
+                "padding: 10px; border-radius: 8px; margin-bottom: 8px;"
+            )
+        else:
+            self.kiosk_face_status.setText(
+                "⚠️  No face detected — go to 'Live Recognition' tab, turn on the camera and have the student look into it"
+            )
+            self.kiosk_face_status.setStyleSheet(
+                "background: #7f1d1d; color: #fca5a5; font-weight: bold; font-size: 12px; "
+                "padding: 10px; border-radius: 8px; margin-bottom: 8px;"
+            )
+
     def switch_panel(self, text):
         if sip.isdeleted(self) or not hasattr(self, 'stack') or sip.isdeleted(self.stack):
             return
@@ -575,17 +736,82 @@ class MainWindow(QMainWindow):
         self.kiosk_panel = QWidget()
         layout = QVBoxLayout(self.kiosk_panel)
         
+        tabs = QTabWidget()
+        
+        # Camera Tab
+        cam_tab = QWidget()
+        cam_layout = QVBoxLayout(cam_tab)
+        
+        # Camera Controls
+        cam_controls = QFrame()
+        cam_controls.setObjectName("LightPanel")
+        cam_ctrl_layout = QHBoxLayout(cam_controls)
+        
+        self.kiosk_cam_toggle = QPushButton("TURN CAMERA ON")
+        self.kiosk_cam_toggle.setObjectName("PrimaryBtn")
+        self.kiosk_cam_toggle.clicked.connect(self.toggle_camera)
+        
+        self.kiosk_cam_select = QComboBox()
+        self.kiosk_cam_select.addItems(["Camera 0 (Default)", "Camera 1", "Camera 2"])
+        self.kiosk_cam_select.currentIndexChanged.connect(self.change_camera_index)
+        
+        cam_ctrl_layout.addWidget(QLabel("Camera Power:"))
+        cam_ctrl_layout.addWidget(self.kiosk_cam_toggle)
+        cam_ctrl_layout.addWidget(QLabel("Select Device:"))
+        cam_ctrl_layout.addWidget(self.kiosk_cam_select)
+        
+        cam_layout.addWidget(cam_controls)
+        
         self.image_label = QLabel()
-        self.image_label.setFixedSize(640, 480)
+        self.image_label.setMinimumSize(320, 240)
+        self.image_label.setSizePolicy(
+            self.image_label.sizePolicy().horizontalPolicy(),
+            self.image_label.sizePolicy().verticalPolicy()
+        )
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("border-radius: 15px; background: #0f172a; border: 1px solid #334155;")
-        layout.addWidget(self.image_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        cam_layout.addWidget(self.image_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.status_label = QLabel("Waiting for Face...")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #2c3e50;")
-        layout.addWidget(self.status_label)
-
+        self.status_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #e2e8f0;")
+        cam_layout.addWidget(self.status_label)
+        
+        tabs.addTab(cam_tab, "Live Recognition")
+        
+        # Registration Tab
+        reg_tab = QWidget(); r_layout = QVBoxLayout(reg_tab)
+        
+        # Face capture status indicator
+        self.kiosk_face_status = QLabel("⚠️  No face detected — go to 'Live Recognition' tab, turn on camera and look into it")
+        self.kiosk_face_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.kiosk_face_status.setWordWrap(True)
+        self.kiosk_face_status.setStyleSheet(
+            "background: #7f1d1d; color: #fca5a5; font-weight: bold; font-size: 12px; "
+            "padding: 10px; border-radius: 8px; margin-bottom: 8px;"
+        )
+        r_layout.addWidget(self.kiosk_face_status)
+        
+        reg_card = QWidget()
+        reg_card.setObjectName("LightPanel")
+        reg_card.setStyleSheet("padding: 20px;")
+        rc_layout = QFormLayout(reg_card)
+        self.stu_name = QLineEdit(); self.stu_enroll = QLineEdit(); self.stu_sem = QLineEdit(); self.stu_course = QLineEdit(); self.stu_major = QLineEdit()
+        rc_layout.addRow("Student Name:", self.stu_name); rc_layout.addRow("Enrollment ID:", self.stu_enroll)
+        rc_layout.addRow(self.STR_SEM, self.stu_sem); rc_layout.addRow("Course:", self.stu_course); rc_layout.addRow("Major/Minor:", self.stu_major)
+        btn_enroll = QPushButton("Register Student"); btn_enroll.setObjectName("PrimaryBtn"); btn_enroll.clicked.connect(self.enroll_student)
+        rc_layout.addRow(btn_enroll)
+        r_layout.addWidget(reg_card); r_layout.addStretch()
+        
+        # Timer to keep the face-status indicator in sync
+        face_status_timer = QTimer(self)
+        face_status_timer.setInterval(1000)
+        face_status_timer.timeout.connect(self._update_kiosk_face_status)
+        face_status_timer.start()
+        
+        tabs.addTab(reg_tab, "Student Enrollment")
+        
+        layout.addWidget(tabs)
         self.stack.addWidget(self.kiosk_panel)
 
     # --- Admin Panel ---
@@ -593,7 +819,9 @@ class MainWindow(QMainWindow):
         tab = QWidget(); layout = QVBoxLayout(tab)
         
         # Filters
-        filter_frame = QFrame(); filter_frame.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 15px; border: 1px solid #dcdde1;")
+        filter_frame = QFrame()
+        filter_frame.setObjectName("LightPanel")
+        filter_frame.setStyleSheet("padding: 15px;")
         f_layout = QHBoxLayout(filter_frame)
         self.r_period = QComboBox(); self.r_period.addItems(["Daily", "Weekly", "Monthly"])
         self.r_period.setToolTip("Select report time range")
@@ -615,7 +843,7 @@ class MainWindow(QMainWindow):
         
         # Status Label
         self.r_status_label = QLabel("Click 'Generate' to view records")
-        self.r_status_label.setStyleSheet("color: #7f8c8d; font-weight: bold; margin-top: 10px;")
+        self.r_status_label.setStyleSheet("color: #94a3b8; font-weight: bold; margin-top: 10px;")
         layout.addWidget(self.r_status_label)
 
         # Results Table
@@ -647,7 +875,8 @@ class MainWindow(QMainWindow):
         
         # Staff Registration
         staff_tab = QWidget()
-        staff_tab.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 25px; border: 1px solid #dcdde1;")
+        staff_tab.setObjectName("LightPanel")
+        staff_tab.setStyleSheet("padding: 25px;")
         s_container = QVBoxLayout(staff_tab)
         s_form_widget = QWidget(); s_layout = QFormLayout(s_form_widget)
         self.s_name = QLineEdit(); self.s_id = QLineEdit(); self.s_pass = QLineEdit()
@@ -666,14 +895,26 @@ class MainWindow(QMainWindow):
         s_container.addWidget(btn_manage_staff)
         
         btn_reg_staff = QPushButton("REGISTER NEW STAFF MEMBER")
-        btn_reg_staff.setObjectName("SuccessBtn")
-        btn_reg_staff.setStyleSheet("color: black;")
         btn_reg_staff.setMinimumHeight(50)
+        btn_reg_staff.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: #000000;
+                border-radius: 12px;
+                padding: 12px;
+                font-weight: 800;
+                font-size: 14px;
+                border: none;
+            }
+            QPushButton:hover { background-color: #34d399; }
+            QPushButton:pressed { background-color: #059669; color: #ffffff; }
+        """)
         btn_reg_staff.clicked.connect(self.register_staff)
         s_container.addWidget(btn_reg_staff)
         
         tabs.addTab(wrap_scroll(dept_tab), "Departments")
         tabs.addTab(wrap_scroll(staff_tab), "Staff Registration")
+        tabs.addTab(self.create_reports_tab(), "Attendance Analytics")
         tabs.addTab(self.create_cloud_sync_tab(), "Cloud Sync Settings")
         tabs.addTab(self.create_camera_control_tab(), "Camera Control")
         layout.addWidget(tabs)
@@ -683,13 +924,15 @@ class MainWindow(QMainWindow):
     def toggle_camera(self):
         if self.thread.isRunning():
             self.thread.stop()
-            self.cam_toggle.setText("TURN CAMERA ON")
+            if hasattr(self, 'cam_toggle'): self.cam_toggle.setText("TURN CAMERA ON")
+            if hasattr(self, 'kiosk_cam_toggle'): self.kiosk_cam_toggle.setText("TURN CAMERA ON")
         else:
             self.thread = VideoThread(self.engine, self.cam_index)
             self.thread.change_pixmap_signal.connect(self.update_image)
             self.thread.face_detected_signal.connect(self.update_face_status)
             self.thread.start()
-            self.cam_toggle.setText("TURN CAMERA OFF")
+            if hasattr(self, 'cam_toggle'): self.cam_toggle.setText("TURN CAMERA OFF")
+            if hasattr(self, 'kiosk_cam_toggle'): self.kiosk_cam_toggle.setText("TURN CAMERA OFF")
 
     def change_camera_index(self, index):
         self.cam_index = index
@@ -706,14 +949,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(self.hod_panel)
         tabs = QTabWidget()
         
-        # Student Registration
-        stu_tab = QWidget()
-        stu_tab.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 25px; border: 1px solid #dcdde1;")
-        stu_layout = QFormLayout(stu_tab)
-        self.stu_name = QLineEdit(); self.stu_enroll = QLineEdit(); self.stu_sem = QLineEdit(); self.stu_course = QLineEdit(); self.stu_major = QLineEdit()
-        stu_layout.addRow("Student Name:", self.stu_name); stu_layout.addRow("Enrollment No:", self.stu_enroll); stu_layout.addRow(self.STR_SEM, self.stu_sem); stu_layout.addRow("Course Name:", self.stu_course); stu_layout.addRow("Major/Minor:", self.stu_major)
-        btn_enroll = QPushButton("Enroll Student (Face Required)"); btn_enroll.setObjectName("PrimaryBtn"); btn_enroll.setMinimumHeight(45); btn_enroll.clicked.connect(self.enroll_student)
-        stu_layout.addRow(btn_enroll)
+        # Student Registration (Moved to Kiosk Panel entirely)
 
         # Routine
         routine_tab = QWidget(); r_layout = QVBoxLayout(routine_tab)
@@ -724,12 +960,16 @@ class MainWindow(QMainWindow):
         r_layout.addWidget(btn_add_routine)
         
         # Student Update Tab
-        update_tab = QWidget(); update_tab.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 20px;")
+        update_tab = QWidget()
+        update_tab.setObjectName("LightPanel")
+        update_tab.setStyleSheet("padding: 20px;")
         u_layout = QVBoxLayout(update_tab)
         self.stu_search = QLineEdit(); self.stu_search.setPlaceholderText("Enter Enrollment ID to Update")
         btn_fetch = QPushButton("Fetch Student Data"); btn_fetch.setObjectName("PrimaryBtn"); btn_fetch.clicked.connect(self.fetch_student_for_update)
         u_layout.addWidget(self.stu_search); u_layout.addWidget(btn_fetch)
-        self.update_form = QFrame(); self.update_form.setStyleSheet("background-color: #f8fafc; border-radius: 10px; padding: 10px; color: black;")
+        self.update_form = QFrame()
+        self.update_form.setObjectName("LightPanel")
+        self.update_form.setStyleSheet("padding: 10px;")
         self.u_form_layout = QFormLayout(self.update_form)
         self.u_name = QLineEdit(); self.u_sem = QLineEdit(); self.u_course = QLineEdit()
         self.u_form_layout.addRow("Name:", self.u_name); self.u_form_layout.addRow(self.STR_SEM, self.u_sem); self.u_form_layout.addRow("Course:", self.u_course)
@@ -745,8 +985,6 @@ class MainWindow(QMainWindow):
         self.u_form_layout.addRow(btn_delete_u)
         u_layout.addWidget(self.update_form); self.update_form.hide()
         
-        # Camera Settings for HOD
-
         # Helper to wrap in scroll area
         def wrap_scroll(w):
             scroll = QScrollArea()
@@ -754,18 +992,187 @@ class MainWindow(QMainWindow):
             scroll.setWidget(w)
             return scroll
 
-        tabs.addTab(wrap_scroll(stu_tab), "Enrollment")
+        tabs.addTab(wrap_scroll(routine_tab), "Routine")
         tabs.addTab(wrap_scroll(routine_tab), "Routine")
         tabs.addTab(wrap_scroll(update_tab), "Update Students")
+        tabs.addTab(self.create_student_directory_tab(), "Student Directory")
         tabs.addTab(self.create_promotion_tab(), "Student Promotion")
         tabs.addTab(self.create_reports_tab(), "Attendance Analytics")
-        tabs.addTab(wrap_scroll(dept_tab), "Departments")
-        tabs.addTab(wrap_scroll(staff_tab), "Staff Registration")
-        tabs.addTab(self.create_cloud_sync_tab(), "Cloud Sync Settings")
         tabs.addTab(self.create_camera_control_tab(), "Camera Control")
         layout.addWidget(tabs)
         self.stack.addWidget(self.hod_panel)
         self.refresh_routine_data()
+
+    # ── Student Directory Tab ─────────────────────────────────────────────────
+    def create_student_directory_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Header
+        header = QFrame()
+        header.setObjectName("MainCard")
+        header.setStyleSheet("padding: 16px;")
+        h_layout = QHBoxLayout(header)
+
+        title = QLabel("🎓  Student Directory")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #38bdf8;")
+        h_layout.addWidget(title)
+        h_layout.addStretch()
+
+        # Semester filter
+        sem_label = QLabel("Filter by Semester:")
+        sem_label.setStyleSheet("color: #94a3b8; font-size: 13px;")
+        h_layout.addWidget(sem_label)
+
+        self.dir_sem_filter = QComboBox()
+        self.dir_sem_filter.addItem("All Semesters")
+        for s in range(1, 9):
+            self.dir_sem_filter.addItem(f"Semester {s}", s)
+        self.dir_sem_filter.setMinimumWidth(160)
+        self.dir_sem_filter.setStyleSheet("""
+            QComboBox {
+                background-color: #1e293b; color: #f1f5f9;
+                border: 1px solid #334155; border-radius: 8px;
+                padding: 6px 12px; font-size: 13px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #1e293b; color: #f1f5f9; }
+        """)
+        self.dir_sem_filter.currentIndexChanged.connect(self.refresh_hod_student_dir)
+        h_layout.addWidget(self.dir_sem_filter)
+
+        # Search bar
+        self.dir_search = QLineEdit()
+        self.dir_search.setPlaceholderText("🔍  Search by name or enrollment...")
+        self.dir_search.setMinimumWidth(220)
+        self.dir_search.setStyleSheet("""
+            QLineEdit {
+                background-color: #1e293b; color: #f1f5f9;
+                border: 1px solid #334155; border-radius: 8px;
+                padding: 6px 12px; font-size: 13px;
+            }
+        """)
+        self.dir_search.textChanged.connect(self.refresh_hod_student_dir)
+        h_layout.addWidget(self.dir_search)
+
+        # Refresh button
+        btn_refresh = QPushButton("↻  Refresh")
+        btn_refresh.setStyleSheet("""
+            QPushButton {
+                background-color: #0ea5e9; color: #ffffff;
+                border-radius: 8px; padding: 7px 16px;
+                font-weight: 700; border: none; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #38bdf8; }
+        """)
+        btn_refresh.clicked.connect(self.refresh_hod_student_dir)
+        h_layout.addWidget(btn_refresh)
+
+        layout.addWidget(header)
+
+        # Table
+        self.student_dir_table = QTableWidget(0, 5)
+        self.student_dir_table.setHorizontalHeaderLabels(
+            ["#", "Name", "Enrollment No.", "Semester", "Major / Minor"]
+        )
+        self.student_dir_table.horizontalHeader().setStretchLastSection(True)
+        self.student_dir_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.student_dir_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.student_dir_table.setAlternatingRowColors(True)
+        self.student_dir_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #0f172a;
+                color: #f1f5f9;
+                gridline-color: #1e293b;
+                border: 1px solid #1e293b;
+                border-radius: 10px;
+                font-size: 13px;
+            }
+            QTableWidget::item:selected {
+                background-color: #0ea5e9;
+                color: #000000;
+            }
+            QTableWidget::item:alternate {
+                background-color: #0c1527;
+            }
+            QHeaderView::section {
+                background-color: #1e293b;
+                color: #94a3b8;
+                font-weight: 700;
+                font-size: 12px;
+                padding: 8px;
+                border: none;
+                border-bottom: 1px solid #334155;
+            }
+        """)
+        # Column widths
+        self.student_dir_table.setColumnWidth(0, 45)
+        self.student_dir_table.setColumnWidth(1, 200)
+        self.student_dir_table.setColumnWidth(2, 160)
+        self.student_dir_table.setColumnWidth(3, 100)
+
+        layout.addWidget(self.student_dir_table)
+
+        # Status bar
+        self.dir_status = QLabel("")
+        self.dir_status.setStyleSheet("color: #64748b; font-size: 12px; padding: 4px;")
+        layout.addWidget(self.dir_status)
+
+        # Initial load
+        self.refresh_hod_student_dir()
+        return tab
+
+    def refresh_hod_student_dir(self):
+        """Reload the student directory table based on active semester filter and search."""
+        from database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            sem_data = self.dir_sem_filter.currentData()  # None = All Semesters
+            search = self.dir_search.text().strip().lower()
+
+            # Fetch all students in HOD's department
+            query = db.query(__import__('database.models', fromlist=['User']).User)
+            query = query.filter_by(role='student')
+            if hasattr(self, 'current_user') and self.current_user and self.current_user.department_id:
+                query = query.filter_by(department_id=self.current_user.department_id)
+            if sem_data is not None:
+                query = query.filter_by(semester=sem_data)
+
+            students = query.order_by(
+                __import__('database.models', fromlist=['User']).User.semester,
+                __import__('database.models', fromlist=['User']).User.name
+            ).all()
+
+            # Apply search filter client-side
+            if search:
+                students = [
+                    s for s in students
+                    if search in (s.name or "").lower() or search in (s.enrollment or "").lower()
+                ]
+
+            self.student_dir_table.setRowCount(0)
+            for idx, s in enumerate(students, start=1):
+                row = self.student_dir_table.rowCount()
+                self.student_dir_table.insertRow(row)
+                self.student_dir_table.setItem(row, 0, QTableWidgetItem(str(idx)))
+                self.student_dir_table.setItem(row, 1, QTableWidgetItem(s.name or ""))
+                self.student_dir_table.setItem(row, 2, QTableWidgetItem(s.enrollment or ""))
+                sem_item = QTableWidgetItem(f"Sem {s.semester}" if s.semester else "—")
+                sem_item.setTextAlignment(0x84)  # AlignCenter
+                self.student_dir_table.setItem(row, 3, sem_item)
+                self.student_dir_table.setItem(row, 4, QTableWidgetItem(s.major_minor or "—"))
+
+            sem_label = self.dir_sem_filter.currentText()
+            self.dir_status.setText(
+                f"Showing {len(students)} student(s)  |  Filter: {sem_label}"
+                + (f"  |  Search: '{search}'" if search else "")
+            )
+        except Exception as e:
+            self.dir_status.setText(f"Error loading students: {e}")
+        finally:
+            db.close()
 
     def create_promotion_tab(self):
         tab = QWidget()
@@ -865,7 +1272,9 @@ class MainWindow(QMainWindow):
         session_tab = QWidget(); s_layout = QVBoxLayout(session_tab)
         
         # Session Controls
-        top_frame = QFrame(); top_frame.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 15px; border: 1px solid #dcdde1;")
+        top_frame = QFrame()
+        top_frame.setObjectName("LightPanel")
+        top_frame.setStyleSheet("padding: 15px;")
         top_layout = QHBoxLayout(top_frame)
         self.t_paper = QLineEdit(); self.t_paper.setPlaceholderText("Paper Name")
         self.t_code = QLineEdit(); self.t_code.setPlaceholderText("Paper Code")
@@ -877,55 +1286,80 @@ class MainWindow(QMainWindow):
         s_layout.addWidget(top_frame)
 
         # Live Monitor
-        self.monitor_frame = QFrame(); self.monitor_frame.setStyleSheet("background-color: white; color: black; border-radius: 12px; padding: 15px; border: 1px solid #dcdde1;")
+        self.monitor_frame = QFrame()
+        self.monitor_frame.setObjectName("MainCard")
+        self.monitor_frame.setStyleSheet("padding: 15px;")
         m_layout = QVBoxLayout(self.monitor_frame)
-        
+
+        # Session header row: title + elapsed timer
         m_header_layout = QHBoxLayout()
-        m_header_layout.addWidget(QLabel("Live Attendance Monitor:"))
+        mon_title = QLabel("🟢  Live Attendance Monitor")
+        mon_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #38bdf8;")
+        m_header_layout.addWidget(mon_title)
+        m_header_layout.addStretch()
+        self.session_clock_label = QLabel("Session: 00:00:00")
+        self.session_clock_label.setStyleSheet("color: #94a3b8; font-size: 13px; font-weight: 600;")
+        m_header_layout.addWidget(self.session_clock_label)
         m_layout.addLayout(m_header_layout)
-        
+
+        # Session elapsed timer
+        self._session_start_time = None
+        self.session_elapsed_timer = QTimer(self)
+        self.session_elapsed_timer.setInterval(1000)
+        self.session_elapsed_timer.timeout.connect(self._update_session_clock)
+
         tables_layout = QHBoxLayout()
-        
+
         # Present Section
         p_vbox = QVBoxLayout()
-        p_vbox.addWidget(QLabel("<b>Present Students</b>"))
-        self.monitor_table = QTableWidget(0, 5) # Keep name as monitor_table to minimize logic changes
+        lbl_present = QLabel("✅  Present Students")
+        lbl_present.setStyleSheet("color: #10b981; font-weight: bold; font-size: 13px; padding-bottom: 4px;")
+        p_vbox.addWidget(lbl_present)
+        self.monitor_table = QTableWidget(0, 5)
         self.monitor_table.setHorizontalHeaderLabels(["Image", "Enrollment", "Name", "Time", "Status"])
         self.monitor_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.monitor_table.setStyleSheet("""
+            QTableWidget { background-color: #0f172a; color: #f1f5f9; gridline-color: #1e293b; }
+            QHeaderView::section { background-color: #1e293b; color: #94a3b8; font-weight: 700; padding: 6px; border: none; }
+        """)
         p_vbox.addWidget(self.monitor_table)
-        
+
         # Absent Section
         a_vbox = QVBoxLayout()
-        a_vbox.addWidget(QLabel("<b>Absent Students</b>"))
+        lbl_absent = QLabel("❌  Absent Students")
+        lbl_absent.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 13px; padding-bottom: 4px;")
+        a_vbox.addWidget(lbl_absent)
         self.absent_table = QTableWidget(0, 2)
         self.absent_table.setHorizontalHeaderLabels(["Enrollment", "Name"])
         self.absent_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.absent_table.setStyleSheet("""
+            QTableWidget { background-color: #0f172a; color: #f1f5f9; gridline-color: #1e293b; }
+            QHeaderView::section { background-color: #1e293b; color: #94a3b8; font-weight: 700; padding: 6px; border: none; }
+        """)
         a_vbox.addWidget(self.absent_table)
-        
+
         tables_layout.addLayout(p_vbox, 3)
         tables_layout.addLayout(a_vbox, 1)
-        
         m_layout.addLayout(tables_layout)
-        s_layout.addWidget(self.monitor_frame); self.monitor_frame.hide()
-        
-        btn_report = QPushButton("Export Daily PDF Report")
-        btn_report.setObjectName("SuccessBtn")
-        btn_report.clicked.connect(self.export_teacher_report)
-        s_layout.addWidget(btn_report)
-        
-        # 2. Registration Tab (Reuse from HOD logic)
-        reg_tab = QWidget(); r_layout = QVBoxLayout(reg_tab)
-        reg_card = QWidget(); reg_card.setStyleSheet("background-color: white; color: black; border-radius: 15px; padding: 20px;")
-        rc_layout = QFormLayout(reg_card)
-        self.stu_name = QLineEdit(); self.stu_enroll = QLineEdit(); self.stu_sem = QLineEdit(); self.stu_course = QLineEdit(); self.stu_major = QLineEdit()
-        rc_layout.addRow("Student Name:", self.stu_name); rc_layout.addRow("Enrollment ID:", self.stu_enroll)
-        rc_layout.addRow(self.STR_SEM, self.stu_sem); rc_layout.addRow("Course:", self.stu_course); rc_layout.addRow("Major/Minor:", self.stu_major)
-        btn_enroll = QPushButton("Register Student"); btn_enroll.setObjectName("PrimaryBtn"); btn_enroll.clicked.connect(self.enroll_student)
-        rc_layout.addRow(btn_enroll)
-        r_layout.addWidget(reg_card); r_layout.addStretch()
+        s_layout.addWidget(self.monitor_frame)
+        self.monitor_frame.hide()
 
+        # Export button — hidden until a session starts/ends
+        self.btn_report = QPushButton("📄  Export Daily PDF Report")
+        self.btn_report.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981; color: #000000;
+                border-radius: 10px; padding: 10px; font-weight: 800;
+                font-size: 13px; border: none;
+            }
+            QPushButton:hover { background-color: #34d399; }
+            QPushButton:pressed { background-color: #059669; color: #ffffff; }
+        """)
+        self.btn_report.clicked.connect(self.export_teacher_report)
+        self.btn_report.hide()   # Hidden until session is started
+        s_layout.addWidget(self.btn_report)
+        
         tabs.addTab(session_tab, "Class Session")
-        tabs.addTab(reg_tab, "Student Enrollment")
         tabs.addTab(self.create_reports_tab(), "Attendance Reports")
         tabs.addTab(self.create_camera_control_tab(), "Camera Settings")
         
@@ -940,36 +1374,27 @@ class MainWindow(QMainWindow):
     def refresh_admin_data(self):
         # Refresh Dept Table
         depts = crud.get_all_departments(self.db)
-        self.dept_table.setRowCount(0)
-        self.s_dept.clear()
-        for d in depts:
-            row = self.dept_table.rowCount()
-            self.dept_table.insertRow(row)
-            self.dept_table.setItem(row, 0, QTableWidgetItem(str(d.id)))
-            self.dept_table.setItem(row, 1, QTableWidgetItem(d.name))
-            self.s_dept.addItem(d.name, d.id)
-            
-        # Refresh Staff Table
-        staff = crud.get_all_users(self.db)
-        self.staff_table.setRowCount(0)
-        for s in staff:
-            if s.role in ['teacher', 'hod']:
-                row = self.staff_table.rowCount()
-                self.staff_table.insertRow(row)
-                self.staff_table.setItem(row, 0, QTableWidgetItem(s.enrollment))
-                self.staff_table.setItem(row, 1, QTableWidgetItem(s.name))
-                self.staff_table.setItem(row, 2, QTableWidgetItem(s.role.upper()))
-            
-        # Refresh Staff Table
-        staff = crud.get_all_users(self.db)
-        self.staff_table.setRowCount(0)
-        for s in staff:
-            if s.role in ['teacher', 'hod']:
-                row = self.staff_table.rowCount()
-                self.staff_table.insertRow(row)
-                self.staff_table.setItem(row, 0, QTableWidgetItem(s.enrollment))
-                self.staff_table.setItem(row, 1, QTableWidgetItem(s.name))
-                self.staff_table.setItem(row, 2, QTableWidgetItem(s.role.upper()))
+        if hasattr(self, 'dept_table'):
+            self.dept_table.setRowCount(0)
+            self.s_dept.clear()
+            for d in depts:
+                row = self.dept_table.rowCount()
+                self.dept_table.insertRow(row)
+                self.dept_table.setItem(row, 0, QTableWidgetItem(str(d.id)))
+                self.dept_table.setItem(row, 1, QTableWidgetItem(d.name))
+                self.s_dept.addItem(d.name, d.id)
+
+        # Refresh Staff Table (single pass — duplicate removed)
+        if hasattr(self, 'staff_table'):
+            staff = crud.get_all_users(self.db)
+            self.staff_table.setRowCount(0)
+            for s in staff:
+                if s.role in ['teacher', 'hod']:
+                    row = self.staff_table.rowCount()
+                    self.staff_table.insertRow(row)
+                    self.staff_table.setItem(row, 0, QTableWidgetItem(s.enrollment))
+                    self.staff_table.setItem(row, 1, QTableWidgetItem(s.name))
+                    self.staff_table.setItem(row, 2, QTableWidgetItem(s.role.upper()))
 
     def add_department_dialog(self):
         from PyQt6.QtWidgets import QInputDialog
@@ -1007,17 +1432,13 @@ class MainWindow(QMainWindow):
             crud.create_user(self.db, str(uuid.uuid4()), name, eid, role=role, department_id=dept_id, password=pw)
             
             # 2. Sync to Cloud
-            if not self.session_cloud_pw:
-                from PyQt6.QtWidgets import QInputDialog
-                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-                if ok and pwd: self.session_cloud_pw = pwd
             
             if self.session_cloud_pw:
                 full_user = crud.get_user_by_enrollment(self.db, eid)
-                user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns}
                 if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
                 threading.Thread(target=sync_client.upsert_user_cloud, 
-                                args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                args=(self.session_cloud_enrollment, self.session_cloud_pw, user_data), 
                                 daemon=True).start()
 
             self.refresh_admin_data() # Update the table
@@ -1038,8 +1459,8 @@ class MainWindow(QMainWindow):
 
         from PyQt6.QtWidgets import QDialog, QLineEdit, QFormLayout, QComboBox
         dialog = QDialog(self); dialog.setWindowTitle(f"Manage Staff: {user.name}")
-        dialog.setMinimumWidth(400)
-        dialog.setStyleSheet("QLabel { color: black; } QLineEdit, QComboBox { color: black; background-color: white; padding: 5px; }")
+        dialog.setMinimumWidth(420)
+        dialog.setStyleSheet(self.STR_DIALOG_STYLE)
         
         d_layout = QVBoxLayout(dialog)
         form_widget = QWidget(); f_layout = QFormLayout(form_widget)
@@ -1084,18 +1505,14 @@ class MainWindow(QMainWindow):
             crud.update_student(self.db, eid, **updates)
             
             # 2. Sync to Cloud
-            if not self.session_cloud_pw:
-                from PyQt6.QtWidgets import QInputDialog
-                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-                if ok and pwd: self.session_cloud_pw = pwd
             
             if self.session_cloud_pw:
                 full_user = crud.get_user_by_enrollment(self.db, eid)
                 if full_user:
-                    user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                    user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns}
                     if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
                     threading.Thread(target=sync_client.upsert_user_cloud, 
-                                    args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                    args=(self.session_cloud_enrollment, self.session_cloud_pw, user_data), 
                                     daemon=True).start()
                 
             QMessageBox.information(dialog, "Success", "Staff updated and sync started.")
@@ -1109,13 +1526,14 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 crud.delete_user(self.db, eid)
                 
-                # Cloud Sync
+                # Cloud Sync — prompt for password if not cached
+            
                 if self.session_cloud_pw:
                     threading.Thread(target=sync_client.delete_user_cloud, 
-                                    args=(self.current_user.enrollment, self.session_cloud_pw, eid), 
+                                    args=(self.session_cloud_enrollment, self.session_cloud_pw, eid), 
                                     daemon=True).start()
                 
-                QMessageBox.information(dialog, "Deleted", "Staff member removed.")
+                QMessageBox.information(dialog, "Deleted", "Staff member removed and cloud sync started.")
                 self.refresh_admin_data()
                 dialog.accept()
 
@@ -1129,7 +1547,9 @@ class MainWindow(QMainWindow):
         dialog.setStyleSheet(self.STR_DIALOG_STYLE)
         d_layout = QFormLayout(dialog)
         day = QComboBox(); day.addItems(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-        start = QTimeEdit(); end = QTimeEdit(); paper = QLineEdit(); code = QLineEdit(); sem = QLineEdit()
+        start = QTimeEdit(); start.setDisplayFormat("h:mm AP")
+        end = QTimeEdit(); end.setDisplayFormat("h:mm AP")
+        paper = QLineEdit(); code = QLineEdit(); sem = QLineEdit()
         
         # Teacher selection
         teachers = crud.get_all_users(self.db, role='teacher')
@@ -1154,15 +1574,11 @@ class MainWindow(QMainWindow):
                                        t_combo.currentData(), self.current_user.department_id)
             
             # 2. Sync Routine
-            if not self.session_cloud_pw:
-                from PyQt6.QtWidgets import QInputDialog
-                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-                if ok and pwd: self.session_cloud_pw = pwd
             
             if self.session_cloud_pw:
-                routine_data = {c.name: getattr(new_r, c.name) for c in new_r.__table__.columns if c.name != 'id'}
+                routine_data = {c.name: getattr(new_r, c.name) for c in new_r.__table__.columns}
                 threading.Thread(target=sync_client.upsert_routine_cloud, 
-                                args=(self.current_user.enrollment, self.session_cloud_pw, routine_data), 
+                                args=(self.session_cloud_enrollment, self.session_cloud_pw, routine_data), 
                                 daemon=True).start()
 
             self.refresh_routine_data()
@@ -1185,18 +1601,14 @@ class MainWindow(QMainWindow):
                            course_name=self.u_course.text())
         
         # Cloud Sync
-        if not self.session_cloud_pw:
-            from PyQt6.QtWidgets import QInputDialog
-            pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-            if ok and pwd: self.session_cloud_pw = pwd
             
         if self.session_cloud_pw:
             user = crud.get_user_by_enrollment(self.db, enroll)
             if user:
-                data = {c.name: getattr(user, c.name) for c in user.__table__.columns if c.name != 'id'}
+                data = {c.name: getattr(user, c.name) for c in user.__table__.columns}
                 if 'embedding' in data and data['embedding']: data['embedding'] = data['embedding'].hex()
                 threading.Thread(target=sync_client.upsert_user_cloud, 
-                                args=(self.current_user.enrollment, self.session_cloud_pw, data), 
+                                args=(self.session_cloud_enrollment, self.session_cloud_pw, data), 
                                 daemon=True).start()
 
         QMessageBox.information(self, "Success", "Student updated and sync started.")
@@ -1212,13 +1624,13 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             if crud.delete_user(self.db, enroll):
-                # Cloud Sync
+                # Cloud Sync — use pre-loaded admin credentials from .env
                 if self.session_cloud_pw:
                     threading.Thread(target=sync_client.delete_user_cloud, 
-                                    args=(self.current_user.enrollment, self.session_cloud_pw, enroll), 
+                                    args=(self.session_cloud_enrollment, self.session_cloud_pw, enroll), 
                                     daemon=True).start()
 
-                QMessageBox.information(self, "Deleted", "Student and all associated records have been removed.")
+                QMessageBox.information(self, "Deleted", "Student and all associated records have been removed. Cloud sync started.")
                 self.update_form.hide()
                 self.stu_search.clear()
             else:
@@ -1241,18 +1653,14 @@ class MainWindow(QMainWindow):
                                  embedding=self.current_embedding)
                 
                 # 2. Sync to Cloud
-                if not self.session_cloud_pw:
-                    from PyQt6.QtWidgets import QInputDialog
-                    pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-                    if ok and pwd: self.session_cloud_pw = pwd
-                
+            
                 if self.session_cloud_pw:
                     full_user = crud.get_user_by_enrollment(self.db, enroll)
                     if full_user:
-                        user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns if c.name != 'id'}
+                        user_data = {c.name: getattr(full_user, c.name) for c in full_user.__table__.columns}
                         if 'embedding' in user_data and user_data['embedding']: user_data['embedding'] = user_data['embedding'].hex()
                         threading.Thread(target=sync_client.upsert_user_cloud, 
-                                        args=(self.current_user.enrollment, self.session_cloud_pw, user_data), 
+                                        args=(self.session_cloud_enrollment, self.session_cloud_pw, user_data), 
                                         daemon=True).start()
 
                 self.show_timed_msg("Success", f"Student {name} enrolled!", 1000)
@@ -1314,11 +1722,16 @@ class MainWindow(QMainWindow):
             }
             self.monitor_table.setRowCount(0)
             self.absent_table.setRowCount(0)
-            
+
             # Populate Absent Table
+            # Fix #2: When sem=0 (ad-hoc), fetch all dept students regardless of semester
             db = SessionLocal()
             try:
-                students = crud.get_students_by_dept_sem(db, self.current_user.department_id, sem)
+                if sem and sem > 0:
+                    students = crud.get_students_by_dept_sem(db, self.current_user.department_id, sem)
+                else:
+                    all_students = crud.get_all_users(db, role='student')
+                    students = [s for s in all_students if s.department_id == self.current_user.department_id]
                 for s in students:
                     row = self.absent_table.rowCount()
                     self.absent_table.insertRow(row)
@@ -1329,7 +1742,13 @@ class MainWindow(QMainWindow):
             finally:
                 db.close()
 
+            # Start session clock
+            import time as _time
+            self._session_start_time = _time.time()
+            self.session_elapsed_timer.start()
+
             self.monitor_frame.show()
+            self.btn_report.show()   # Fix #3: show export button when session starts
             self.btn_session_control.setText("End Class Session")
             self.btn_session_control.setObjectName("DangerBtn")
             self.btn_session_control.style().unpolish(self.btn_session_control)
@@ -1339,12 +1758,24 @@ class MainWindow(QMainWindow):
             # End Session
             self.last_session = self.active_session
             self.active_session = None
+            self.session_elapsed_timer.stop()   # Fix #5: stop clock
             self.monitor_frame.hide()
             self.btn_session_control.setText("Start Class Session")
             self.btn_session_control.setObjectName("PrimaryBtn")
             self.btn_session_control.style().unpolish(self.btn_session_control)
             self.btn_session_control.style().polish(self.btn_session_control)
-            QMessageBox.information(self, "Session Ended", "Class session has been closed.")
+            QMessageBox.information(self, "Session Ended", "Class session has been closed. You can still export the PDF report.")
+
+    def _update_session_clock(self):
+        """Update the elapsed session timer label every second."""
+        if self._session_start_time is None:
+            return
+        import time as _time
+        elapsed = int(_time.time() - self._session_start_time)
+        h = elapsed // 3600
+        m = (elapsed % 3600) // 60
+        s = elapsed % 60
+        self.session_clock_label.setText(f"Session: {h:02d}:{m:02d}:{s:02d}")
 
     def export_analytics_pdf(self):
         if self.report_table.rowCount() == 0:
@@ -1473,14 +1904,16 @@ class MainWindow(QMainWindow):
             h, w, ch = rgb_image.shape
             bytes_per_line = ch * w
             q_img = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-            self.image_label.setPixmap(QPixmap.fromImage(q_img.scaled(640, 480, Qt.AspectRatioMode.KeepAspectRatio)))
+            label_w = self.image_label.width() or 640
+            label_h = self.image_label.height() or 480
+            self.image_label.setPixmap(QPixmap.fromImage(q_img.scaled(label_w, label_h, Qt.AspectRatioMode.KeepAspectRatio)))
         except Exception: pass
 
     def update_face_status(self, embedding, box, is_live):
         try:
             if sip.isdeleted(self) or not self.isVisible(): return
             if sip.isdeleted(self.status_label): return
-            
+
             self.current_embedding = embedding
             self.is_live = is_live
             if embedding is not None:
@@ -1488,9 +1921,11 @@ class MainWindow(QMainWindow):
                     if hasattr(self, 'active_session') and self.active_session is not None:
                         self.status_label.setText("Verifying Identity...")
                     else:
-                        self.status_label.setText("Ready to Mark Attendance")
-                    
-                    if time.time() - self.last_mark_time > self.auto_mark_delay:
+                        self.status_label.setText("Camera Active — Start a session to mark attendance")
+
+                    # Fix #7: Only auto-mark when a session is actually active
+                    if (hasattr(self, 'active_session') and self.active_session
+                            and time.time() - self.last_mark_time > self.auto_mark_delay):
                         self.mark_attendance(box)
                 else:
                     self.status_label.setText("Liveness Check Failed (Blink to Verify)")
@@ -1514,15 +1949,23 @@ class MainWindow(QMainWindow):
     def identify_user(self):
         db = SessionLocal()
         try:
-            users = crud.get_all_users(db)
+            # Fix #1: Scan only students in the teacher's own department
+            # This prevents false matches against staff/admins and improves speed
+            dept_id = getattr(self.current_user, 'department_id', None)
+            all_users = crud.get_all_users(db, role='student')
+            if dept_id:
+                users = [u for u in all_users if u.department_id == dept_id]
+            else:
+                users = all_users
+
             best_match = None; min_dist = 0.8
             for user in users:
                 if not user.embedding: continue
                 db_emb = np.frombuffer(user.embedding, dtype=np.float32)
-                
-                # Normalize db_emb for consistent comparison
+
+                # Normalize for consistent cosine comparison
                 db_emb = db_emb / np.linalg.norm(db_emb)
-                
+
                 match, dist = self.engine.compare_embeddings(self.current_embedding, db_emb, threshold=1.0)
                 if match and dist < min_dist:
                     min_dist = dist
@@ -1608,8 +2051,14 @@ class MainWindow(QMainWindow):
                 self.show_notification(res.get("message", "Error"), is_error=True)
                 self.last_mark_time = time.time()
         except Exception as e:
-            self.status_label.setText("System Error: Check Logs")
-            print(f"Attendance Error: {e}")
+            import traceback
+            err = traceback.format_exc()
+            self.status_label.setText(f"System Error: {str(e)}")
+            try:
+                with open("attendance_crash.log", "w", encoding="utf-8") as f:
+                    f.write(err)
+            except: pass
+            print(f"Attendance Error: {err}")
         finally:
             db.close()
 
@@ -1680,7 +2129,9 @@ class MainWindow(QMainWindow):
                     row = self.routine_table.rowCount()
                     self.routine_table.insertRow(row)
                     self.routine_table.setItem(row, 0, QTableWidgetItem(r.day_of_week))
-                    self.routine_table.setItem(row, 1, QTableWidgetItem(f"{r.start_time} - {r.end_time}"))
+                    s_str = r.start_time.strftime("%I:%M %p") if r.start_time else "N/A"
+                    e_str = r.end_time.strftime("%I:%M %p") if r.end_time else "N/A"
+                    self.routine_table.setItem(row, 1, QTableWidgetItem(f"{s_str} - {e_str}"))
                     self.routine_table.setItem(row, 2, QTableWidgetItem(r.subject.name if r.subject else "N/A"))
                     self.routine_table.setItem(row, 3, QTableWidgetItem(r.subject.code if r.subject else "N/A"))
                     self.routine_table.setItem(row, 4, QTableWidgetItem(str(r.semester)))
@@ -1782,14 +2233,10 @@ class MainWindow(QMainWindow):
             crud.delete_routine(self.db, rid)
             
             # 2. Cloud Delete
-            if not self.session_cloud_pw:
-                from PyQt6.QtWidgets import QInputDialog
-                pwd, ok = QInputDialog.getText(self, "Cloud Sync", "Enter Cloud Admin Password:", QLineEdit.EchoMode.Password)
-                if ok and pwd: self.session_cloud_pw = pwd
             
             if self.session_cloud_pw:
                 threading.Thread(target=sync_client.delete_routine_cloud, 
-                                args=(self.current_user.enrollment, self.session_cloud_pw, rid), 
+                                args=(self.session_cloud_enrollment, self.session_cloud_pw, rid), 
                                 daemon=True).start()
             
             self.refresh_routine_data()
@@ -1799,77 +2246,135 @@ class MainWindow(QMainWindow):
     def create_cloud_sync_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
-        card = QFrame()
-        card.setObjectName("MainCard")
-        card.setStyleSheet("padding: 25px;")
-        c_layout = QVBoxLayout(card)
-        
-        title = QLabel("Cloud Synchronization Management")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #38bdf8;")
-        c_layout.addWidget(title)
-        
-        desc = QLabel("Synchronize your local database with the central cloud server.")
-        desc.setStyleSheet("color: #94a3b8; font-size: 14px; margin-bottom: 20px;")
-        c_layout.addWidget(desc)
-        
-        # Pull Section
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        header = QFrame()
+        header.setObjectName("MainCard")
+        header.setStyleSheet("padding: 20px;")
+        h_layout = QVBoxLayout(header)
+
+        title = QLabel("☁  Cloud Synchronization Management")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #38bdf8;")
+        h_layout.addWidget(title)
+
+        desc = QLabel("Synchronize your local database with the central cloud server.\n"
+                      "Use Pull to download cloud data locally, or Full Sync to upload your local data to the cloud.")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #94a3b8; font-size: 13px; margin-top: 6px;")
+        h_layout.addWidget(desc)
+        layout.addWidget(header)
+
+        # ── Pull Section ───────────────────────────────────────────────────────
         pull_group = QFrame()
-        pull_group.setStyleSheet("background: #0f172a; border-radius: 12px; padding: 15px;")
+        pull_group.setStyleSheet("""
+            QFrame {
+                background-color: #1e293b;
+                border-radius: 14px;
+                border-left: 4px solid #38bdf8;
+            }
+        """)
         pg_layout = QVBoxLayout(pull_group)
-        pg_layout.addWidget(QLabel("<b>Option A: Download Master Data (Pull)</b>"))
-        pg_layout.addWidget(QLabel("Use this if you want to download students/routines already existing in the cloud."))
-        
-        btn_pull = QPushButton(" Pull Master Data from Cloud")
+        pg_layout.setContentsMargins(20, 18, 20, 18)
+        pg_layout.setSpacing(8)
+
+        pull_title = QLabel("⬇   Option A: Download Master Data  (Pull from Cloud)")
+        pull_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #f1f5f9;")
+        pg_layout.addWidget(pull_title)
+
+        pull_desc = QLabel("Downloads all students, staff, routines, and departments from the cloud "
+                           "and saves them to your local database. Use this on a fresh install or to "
+                           "get updates from the central server.")
+        pull_desc.setWordWrap(True)
+        pull_desc.setStyleSheet("color: #94a3b8; font-size: 13px;")
+        pg_layout.addWidget(pull_desc)
+
+        btn_pull = QPushButton("⬇   Pull Master Data from Cloud")
         btn_pull.setObjectName("PrimaryBtn")
+        btn_pull.setMinimumHeight(48)
+        btn_pull.setStyleSheet("""
+            QPushButton {
+                background-color: #0ea5e9;
+                color: #ffffff;
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: 700;
+                border: none;
+                padding: 10px 20px;
+            }
+            QPushButton:hover { background-color: #38bdf8; }
+            QPushButton:pressed { background-color: #0284c7; }
+        """)
         btn_pull.clicked.connect(self.pull_master_data_dialog)
         pg_layout.addWidget(btn_pull)
-        c_layout.addWidget(pull_group)
-        
-        c_layout.addSpacing(20)
-        
-        # Push Section
+        layout.addWidget(pull_group)
+
+        # ── Push Section ───────────────────────────────────────────────────────
         push_group = QFrame()
-        push_group.setStyleSheet("background: #0f172a; border-radius: 12px; padding: 15px;")
+        push_group.setStyleSheet("""
+            QFrame {
+                background-color: #1e293b;
+                border-radius: 14px;
+                border-left: 4px solid #10b981;
+            }
+        """)
         ps_layout = QVBoxLayout(push_group)
-        ps_layout.addWidget(QLabel("<b>Option B: Upload Local Data (Full Sync)</b>"))
-        ps_layout.addWidget(QLabel("Use this to push ALL your local students, routines, and departments to the cloud."))
-        
-        btn_push = QPushButton(" Full Sync: Push All Data to Cloud")
-        btn_push.setObjectName("SuccessBtn")
+        ps_layout.setContentsMargins(20, 18, 20, 18)
+        ps_layout.setSpacing(8)
+
+        push_title = QLabel("⬆   Option B: Upload Local Data  (Full Sync to Cloud)")
+        push_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #f1f5f9;")
+        ps_layout.addWidget(push_title)
+
+        push_desc = QLabel("Pushes ALL your local students, staff, routines, and departments to the "
+                           "cloud. Existing cloud records are updated. Use this to share your local "
+                           "database with all other connected devices.")
+        push_desc.setWordWrap(True)
+        push_desc.setStyleSheet("color: #94a3b8; font-size: 13px;")
+        ps_layout.addWidget(push_desc)
+
+        btn_push = QPushButton("⬆   Full Sync: Push All Data to Cloud")
+        btn_push.setMinimumHeight(48)
+        btn_push.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: #000000;
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: 700;
+                border: none;
+                padding: 10px 20px;
+            }
+            QPushButton:hover { background-color: #34d399; }
+            QPushButton:pressed { background-color: #059669; }
+        """)
         btn_push.clicked.connect(self.push_master_data_dialog)
         ps_layout.addWidget(btn_push)
-        c_layout.addWidget(push_group)
-        
-        layout.addWidget(card)
+        layout.addWidget(push_group)
+
         layout.addStretch()
         return tab
 
     def pull_master_data_dialog(self):
-        from PyQt6.QtWidgets import QInputDialog
-        enrollment, ok1 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Enrollment:")
-        if not ok1 or not enrollment: return
-        password, ok2 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Password:", QLineEdit.EchoMode.Password)
-        if not ok2 or not password: return
-        
-        self.pull_thread = PullMasterDataThread(enrollment, password)
+        """Pull master data from cloud using pre-configured admin credentials."""
+        self.pull_thread = PullMasterDataThread(
+            self.session_cloud_enrollment, self.session_cloud_pw
+        )
         self.pull_thread.finished_signal.connect(self.handle_sync_result_dict)
         self.pull_thread.start()
         self.show_notification("Pulling cloud data...")
 
     def push_master_data_dialog(self):
-        from PyQt6.QtWidgets import QInputDialog
-        enrollment, ok1 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Enrollment:")
-        if not ok1 or not enrollment: return
-        password, ok2 = QInputDialog.getText(self, "Cloud Auth", "Enter Admin Password:", QLineEdit.EchoMode.Password)
-        if not ok2 or not password: return
-        
+        """Push all local data to cloud using pre-configured admin credentials."""
         reply = QMessageBox.question(self, "Confirm Full Sync", 
                                    "This will upload ALL your local students, routines, and departments to the cloud.\nExisting records in the cloud will be updated. Proceed?",
                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply == QMessageBox.StandardButton.Yes:
-            self.push_thread = PushMasterDataThread(enrollment, password)
+            self.push_thread = PushMasterDataThread(
+                self.session_cloud_enrollment, self.session_cloud_pw
+            )
             self.push_thread.finished_signal.connect(self.handle_sync_result_dict)
             self.push_thread.start()
             self.show_notification("Pushing local data to cloud...")
