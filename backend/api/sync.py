@@ -9,6 +9,9 @@ from schemas.sync import (
 )
 from database import models
 import bcrypt
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -22,7 +25,7 @@ def reset_sequences(db: Session):
                 f"COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)"
             ))
         except Exception as e:
-            print(f"Sequence reset warning for {table}: {e}")
+            logger.warning(f"Sequence reset failed for {table}: {e}")
     db.commit()
 
 def get_db():
@@ -36,48 +39,58 @@ def get_db():
 def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
     """Receive attendance records from local devices and save to central DB."""
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta
         new_records = []
         skipped_duplicates = 0
+        skipped_missing_user = 0
 
         for rec in request.records:
             # 1. Verify User exists in cloud
             user = db.query(models.User).filter(models.User.user_id == rec.user_id).first()
             if not user:
-                print(f"Skipping record for non-existent user: {rec.user_id}")
+                skipped_missing_user += 1
                 continue
 
             # 2. Resolve routine — if not in cloud, save record with routine_id=None
-            #    (never drop attendance data just because routine isn't synced yet)
             routine_id = None
             if rec.routine_id:
                 r_exists = db.query(models.Routine).filter(models.Routine.id == rec.routine_id).first()
                 if r_exists:
                     routine_id = rec.routine_id
-                else:
-                    print(f"Routine {rec.routine_id} not in cloud — saving record with routine_id=None")
 
-            # 3. Duplicate check: same user + same routine + same calendar day
+            # 3. Duplicate check: 
+            # If routine_id exists: prevent double-marking for the SAME routine on the SAME day.
+            # If routine_id is None: prevent double-marking within a 5-minute window (double taps).
             try:
                 rec_ts = rec.timestamp
-                if hasattr(rec_ts, 'date'):
+                # Ensure it's a datetime object
+                if isinstance(rec_ts, str):
+                    rec_ts = datetime.fromisoformat(rec_ts.replace('Z', '+00:00'))
+                
+                if routine_id:
+                    # Check for any record for this user + routine on this calendar day
                     rec_date = rec_ts.date()
+                    existing = db.query(models.AttendanceRecord).filter(
+                        models.AttendanceRecord.user_id == rec.user_id,
+                        models.AttendanceRecord.routine_id == routine_id
+                    ).all()
+                    already_exists = any(r.timestamp.date() == rec_date for r in existing if r.timestamp)
                 else:
-                    rec_date = datetime.fromisoformat(str(rec_ts)).date()
+                    # No routine: just prevent double-marking in a 5-minute window
+                    window_start = rec_ts - timedelta(minutes=5)
+                    window_end = rec_ts + timedelta(minutes=5)
+                    already_exists = db.query(models.AttendanceRecord).filter(
+                        models.AttendanceRecord.user_id == rec.user_id,
+                        models.AttendanceRecord.routine_id == None,
+                        models.AttendanceRecord.timestamp >= window_start,
+                        models.AttendanceRecord.timestamp <= window_end
+                    ).first() is not None
 
-                existing = db.query(models.AttendanceRecord).filter(
-                    models.AttendanceRecord.user_id == rec.user_id,
-                    models.AttendanceRecord.routine_id == routine_id,
-                ).all()
-                already_exists = any(
-                    r.timestamp.date() == rec_date for r in existing
-                    if r.timestamp is not None
-                )
                 if already_exists:
                     skipped_duplicates += 1
                     continue
             except Exception as dup_err:
-                print(f"Duplicate check failed for {rec.user_id}: {dup_err} — inserting anyway")
+                print(f"Duplicate check error: {dup_err}")
 
             record = models.AttendanceRecord(
                 user_id=rec.user_id,
@@ -93,8 +106,13 @@ def sync_records(request: SyncRequest, db: Annotated[Session, Depends(get_db)]):
             db.add_all(new_records)
             db.commit()
 
-        print(f"Saved {len(new_records)} records. Skipped duplicates: {skipped_duplicates}. Total received: {len(request.records)}")
-        return {"status": "success", "synced_count": len(new_records), "duplicates_skipped": skipped_duplicates}
+        print(f"Sync Results: Saved={len(new_records)}, Duplicates={skipped_duplicates}, MissingUser={skipped_missing_user}")
+        return {
+            "status": "success", 
+            "synced_count": len(new_records), 
+            "duplicates_skipped": skipped_duplicates,
+            "missing_users_skipped": skipped_missing_user
+        }
     except Exception as e:
         db.rollback()
         print(f"Error during record sync: {e}")
@@ -156,6 +174,9 @@ def upsert_user(request: UserUpsertRequest, db: Session = Depends(get_db)):
     # Identify by user_id (UUID) which is always unique and stable.
     data.pop('id', None)  # Let Postgres manage the serial PK
     uid = data.get('user_id')
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id is required")
+        
     existing = db.query(models.User).filter(models.User.user_id == uid).first()
     if existing:
         for k, v in data.items():
