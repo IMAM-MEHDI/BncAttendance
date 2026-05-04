@@ -88,10 +88,13 @@ def delete_user(db: Session, enrollment: str):
         return True
     return False
 
-def get_all_users(db: Session, role: str = None):
+def get_all_users(db: Session, role=None):
     query = db.query(models.User)
     if role:
-        query = query.filter(models.User.role == role)
+        if isinstance(role, (list, tuple)):
+            query = query.filter(models.User.role.in_(role))
+        else:
+            query = query.filter(models.User.role == role)
     return query.all()
 
 def get_students_by_dept_sem(db: Session, dept_id: int, sem: int):
@@ -100,8 +103,6 @@ def get_students_by_dept_sem(db: Session, dept_id: int, sem: int):
         models.User.semester == sem,
         models.User.role == 'student'
     ).all()
-
-from datetime import datetime
 
 # --- Routine CRUD ---
 def create_routine(db: Session, day: str, start: str, end: str, subject_id: int,
@@ -131,35 +132,71 @@ def create_routine(db: Session, day: str, start: str, end: str, subject_id: int,
 def get_routines_by_dept(db: Session, dept_id: int):
     return db.query(models.Routine).filter(models.Routine.department_id == dept_id).all()
 
+def get_routines_by_teacher(db: Session, teacher_id: int):
+    return db.query(models.Routine).filter(models.Routine.teacher_id == teacher_id).all()
+
 def delete_routine(db: Session, routine_id: int):
     db.query(models.Routine).filter(models.Routine.id == routine_id).delete()
     db.commit()
 
 # --- Attendance Logic ---
-def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float, routine_id: int = None):
-    # Get user to find department
+def mark_attendance(db: Session, user_id: int, device_id: str, confidence: float, routine_id: int = None, target_semester: int = None):
+    # --- 1. Basic Validation ---
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user: return {"status": "error", "message": "User not found"}
-
-    routine = None
-    if routine_id:
-        routine = db.query(models.Routine).filter(models.Routine.id == routine_id).first()
+    if not user:
+        return {"status": "error", "message": "User not found"}
     
+    # 2. Identify the Routine/Class
+    routine = db.query(models.Routine).filter(models.Routine.id == routine_id).first() if routine_id else None
+    
+    # Get normalized student semester for comparison
+    u_sem = int(user.semester) if user.semester is not None else 0
+
+    # If a target semester is provided (from an active session), the student MUST match it
+    if target_semester is not None:
+        t_sem = int(target_semester)
+        print(f"[DEBUG] Attendance Check: Student {user.enrollment} (Sem {u_sem}) -> Session (Sem {t_sem})")
+        if t_sem > 0 and u_sem != t_sem:
+            return {
+                "status": "error",
+                "message": f"Class for Sem {t_sem}, you are in Sem {u_sem}"
+            }
+
     if not routine:
         # Find active routine (class happening now)
         now = datetime.now()
         day = now.strftime("%A")
         current_time = now.time()
         
+        # Priority 1: Match department, day, time AND semester
         routine = db.query(models.Routine).filter(
             models.Routine.department_id == user.department_id,
             models.Routine.day_of_week == day,
             models.Routine.start_time <= current_time,
-            models.Routine.end_time >= current_time
+            models.Routine.end_time >= current_time,
+            models.Routine.semester == u_sem
         ).first()
 
+        # Priority 2: Fallback to any class in dept ONLY IF student has no semester (0 or None)
+        if not routine and u_sem == 0:
+            routine = db.query(models.Routine).filter(
+                models.Routine.department_id == user.department_id,
+                models.Routine.day_of_week == day,
+                models.Routine.start_time <= current_time,
+                models.Routine.end_time >= current_time
+            ).first()
+
     if not routine:
-        return {"status": "error", "message": "No active class scheduled right now"}
+        return {"status": "error", "message": "No active class scheduled for your semester right now"}
+
+    # --- 4. Strict Semester Validation ---
+    r_sem = int(routine.semester) if routine.semester is not None else 0
+    
+    if u_sem != r_sem:
+        return {
+            "status": "error", 
+            "message": f"Class for Sem {r_sem}, you are in Sem {u_sem}"
+        }
 
     # Use consistent UTC-based 'today start'
     now_utc = datetime.now(timezone.utc)

@@ -853,6 +853,67 @@ class MainWindow(QMainWindow):
         
         return tab
 
+    def create_teacher_routine_tab(self):
+        print("[DEBUG] Initializing Teacher Routine Tab...")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        header = QLabel("📅  My Assigned Routine")
+        header.setStyleSheet("font-size: 18px; font-weight: bold; color: #38bdf8; margin-bottom: 10px;")
+        layout.addWidget(header)
+        
+        self.teacher_routine_table = QTableWidget(0, 5)
+        self.teacher_routine_table.setHorizontalHeaderLabels(["Day", "Time Slot", "Paper", "Code", "Semester"])
+        self.teacher_routine_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.teacher_routine_table.setAlternatingRowColors(True)
+        self.teacher_routine_table.setStyleSheet("""
+            QTableWidget { 
+                background-color: #0f172a; color: #f1f5f9; 
+                gridline-color: #1e293b; border-radius: 10px; 
+                font-size: 13px;
+            }
+            QHeaderView::section { 
+                background-color: #1e293b; color: #94a3b8; 
+                font-weight: 700; padding: 8px; border: none; 
+            }
+            QTableWidget::item:alternate { background-color: #0c1527; }
+        """)
+        layout.addWidget(self.teacher_routine_table)
+        
+        btn_refresh = QPushButton("↻  Refresh My Routine")
+        btn_refresh.setObjectName("PrimaryBtn")
+        btn_refresh.setMinimumHeight(45)
+        btn_refresh.clicked.connect(self.refresh_teacher_routine)
+        layout.addWidget(btn_refresh)
+        
+        return tab
+
+    def refresh_teacher_routine(self):
+        db = SessionLocal()
+        try:
+            routines = crud.get_routines_by_teacher(db, self.current_user.id)
+            self.teacher_routine_table.setRowCount(0)
+            
+            # Sort by Day and then Time
+            day_order = {"Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7}
+            routines.sort(key=lambda x: (day_order.get(x.day_of_week, 8), x.start_time or datetime.min.time()))
+            
+            for r in routines:
+                row = self.teacher_routine_table.rowCount()
+                self.teacher_routine_table.insertRow(row)
+                self.teacher_routine_table.setItem(row, 0, QTableWidgetItem(r.day_of_week))
+                s_str = r.start_time.strftime("%I:%M %p") if r.start_time else "N/A"
+                e_str = r.end_time.strftime("%I:%M %p") if r.end_time else "N/A"
+                self.teacher_routine_table.setItem(row, 1, QTableWidgetItem(f"{s_str} - {e_str}"))
+                self.teacher_routine_table.setItem(row, 2, QTableWidgetItem(r.subject.name if r.subject else "N/A"))
+                self.teacher_routine_table.setItem(row, 3, QTableWidgetItem(r.subject.code if r.subject else "N/A"))
+                self.teacher_routine_table.setItem(row, 4, QTableWidgetItem(str(r.semester)))
+        except Exception as e:
+            print(f"Error refreshing teacher routine: {e}")
+        finally:
+            db.close()
+
     def setup_admin_panel(self):
         self.admin_panel = QWidget()
         layout = QVBoxLayout(self.admin_panel)
@@ -992,8 +1053,9 @@ class MainWindow(QMainWindow):
             scroll.setWidget(w)
             return scroll
 
+        tabs.addTab(self.create_class_session_tab(), "Class Session")
         tabs.addTab(wrap_scroll(routine_tab), "Routine")
-        tabs.addTab(wrap_scroll(routine_tab), "Routine")
+        tabs.addTab(self.create_teacher_routine_tab(), "My Routine")
         tabs.addTab(wrap_scroll(update_tab), "Update Students")
         tabs.addTab(self.create_student_directory_tab(), "Student Directory")
         tabs.addTab(self.create_promotion_tab(), "Student Promotion")
@@ -1260,15 +1322,7 @@ class MainWindow(QMainWindow):
             finally:
                 self.statusBar().showMessage("Ready")
 
-    # --- Teacher Panel ---
-    def setup_teacher_panel(self):
-        self.teacher_panel = QWidget()
-        layout = QVBoxLayout(self.teacher_panel)
-        
-        # --- Teacher Panel Tabs ---
-        tabs = QTabWidget()
-        
-        # 1. Session Tab
+    def create_class_session_tab(self):
         session_tab = QWidget(); s_layout = QVBoxLayout(session_tab)
         
         # Session Controls
@@ -1319,7 +1373,7 @@ class MainWindow(QMainWindow):
         self.monitor_table.setHorizontalHeaderLabels(["Image", "Enrollment", "Name", "Time", "Status"])
         self.monitor_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.monitor_table.setStyleSheet("""
-            QTableWidget { background-color: #0f172a; color: #f1f5f9; gridline-color: #1e293b; }
+            QTableWidget { background-color: #0f172a; color: #ffffff; gridline-color: #1e293b; }
             QHeaderView::section { background-color: #1e293b; color: #94a3b8; font-weight: 700; padding: 6px; border: none; }
         """)
         p_vbox.addWidget(self.monitor_table)
@@ -1333,7 +1387,7 @@ class MainWindow(QMainWindow):
         self.absent_table.setHorizontalHeaderLabels(["Enrollment", "Name"])
         self.absent_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.absent_table.setStyleSheet("""
-            QTableWidget { background-color: #0f172a; color: #f1f5f9; gridline-color: #1e293b; }
+            QTableWidget { background-color: #0f172a; color: #ffffff; gridline-color: #1e293b; }
             QHeaderView::section { background-color: #1e293b; color: #94a3b8; font-weight: 700; padding: 6px; border: none; }
         """)
         a_vbox.addWidget(self.absent_table)
@@ -1358,8 +1412,17 @@ class MainWindow(QMainWindow):
         self.btn_report.clicked.connect(self.export_teacher_report)
         self.btn_report.hide()   # Hidden until session is started
         s_layout.addWidget(self.btn_report)
+        return session_tab
+
+    # --- Teacher Panel ---
+    def setup_teacher_panel(self):
+        self.teacher_panel = QWidget()
+        layout = QVBoxLayout(self.teacher_panel)
         
-        tabs.addTab(session_tab, "Class Session")
+        # --- Teacher Panel Tabs ---
+        tabs = QTabWidget()
+        tabs.addTab(self.create_class_session_tab(), "Class Session")
+        tabs.addTab(self.create_teacher_routine_tab(), "My Routine")
         tabs.addTab(self.create_reports_tab(), "Attendance Reports")
         tabs.addTab(self.create_camera_control_tab(), "Camera Settings")
         
@@ -1550,37 +1613,30 @@ class MainWindow(QMainWindow):
         start = QTimeEdit(); start.setDisplayFormat("h:mm AP")
         end = QTimeEdit(); end.setDisplayFormat("h:mm AP")
         paper = QLineEdit(); code = QLineEdit(); sem = QLineEdit()
-        
-        # Teacher selection
-        teachers = crud.get_all_users(self.db, role='teacher')
+
+        # Teacher selection (Include both Teachers and HODs)
+        teachers = crud.get_all_users(self.db, role=['teacher', 'hod'])
         t_combo = QComboBox()
         for t in teachers: t_combo.addItem(t.name, t.id)
-        
+
         d_layout.addRow("Day:", day); d_layout.addRow("Start Time:", start); d_layout.addRow("End Time:", end)
         d_layout.addRow("Paper Name:", paper); d_layout.addRow("Paper Code:", code); d_layout.addRow(self.STR_SEM, sem)
         d_layout.addRow("Teacher:", t_combo)
-        
+
         btn = QPushButton("Save")
         btn.clicked.connect(dialog.accept)
         d_layout.addRow(btn)
-        
+
         if dialog.exec():
-            # Get or create subject first
             subj = crud.get_or_create_subject(self.db, code.text().strip(), paper.text().strip())
-            
-            # 1. Create Locally
-            new_r = crud.create_routine(self.db, day.currentText(), start.text(), end.text(), 
-                                       subj.id, int(sem.text() or 0), 
+            new_r = crud.create_routine(self.db, day.currentText(), start.text(), end.text(),
+                                       subj.id, int(sem.text() or 0),
                                        t_combo.currentData(), self.current_user.department_id)
-            
-            # 2. Sync Routine
-            
             if self.session_cloud_pw:
                 routine_data = {c.name: getattr(new_r, c.name) for c in new_r.__table__.columns}
-                threading.Thread(target=sync_client.upsert_routine_cloud, 
-                                args=(self.session_cloud_enrollment, self.session_cloud_pw, routine_data), 
+                threading.Thread(target=sync_client.upsert_routine_cloud,
+                                args=(self.session_cloud_enrollment, self.session_cloud_pw, routine_data),
                                 daemon=True).start()
-
             self.refresh_routine_data()
             QMessageBox.information(self, "Success", "Routine entry added and sync started.")
 
@@ -1841,9 +1897,9 @@ class MainWindow(QMainWindow):
         session_to_export = getattr(self, 'active_session', None)
         if not session_to_export:
             session_to_export = getattr(self, 'last_session', None)
-
+            
         if not session_to_export:
-            QMessageBox.warning(self, "Error", "No active session to export.")
+            QMessageBox.warning(self, 'Error', 'No active session to export.')
             return
         if self.monitor_table.rowCount() == 0 and self.absent_table.rowCount() == 0:
             QMessageBox.warning(self, self.STR_EXP_ERR, "No students found in the roster or marked present for this session.")
@@ -1865,20 +1921,33 @@ class MainWindow(QMainWindow):
         records = []
         # 1. Add Present Students
         for i in range(self.monitor_table.rowCount()):
-            e = self.monitor_table.item(i, 1).text()
-            n = self.monitor_table.item(i, 2).text()
-            t_str = self.monitor_table.item(i, 3).text()
+            it_e = self.monitor_table.item(i, 1)
+            it_n = self.monitor_table.item(i, 2)
+            it_t = self.monitor_table.item(i, 3)
+            
+            if not it_e or not it_n: continue
+            
+            e = it_e.text()
+            n = it_n.text()
+            t_str = it_t.text() if it_t else ''
+            
             try:
                 t = datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(t_str, "%H:%M:%S").time())
             except:
                 t = datetime.datetime.now()
-            records.append(MockRecord(e, n, t, session_to_export['paper_name'], status="Present"))
+            records.append(MockRecord(e, n, t, session_to_export['paper_name'], status='Present'))
 
         # 2. Add Absent Students
         for i in range(self.absent_table.rowCount()):
-            e = self.absent_table.item(i, 0).text()
-            n = self.absent_table.item(i, 1).text()
-            records.append(MockRecord(e, n, datetime.datetime.now(), session_to_export['paper_name'], status="Absent"))
+            it_e = self.absent_table.item(i, 0)
+            it_n = self.absent_table.item(i, 1)
+            
+            if not it_e or not it_n: continue
+            
+            e = it_e.text()
+            n = it_n.text()
+            records.append(MockRecord(e, n, datetime.datetime.now(), session_to_export['paper_name'], status='Absent'))
+
         title = f"Class Attendance: {session_to_export['paper_name']}"
         filename = f"Attendance_{session_to_export['paper_code']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
         
@@ -1899,7 +1968,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Success", f"Report exported to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, self.STR_EXP_ERR, f"Could not export PDF: {str(e)}")
-
+            
     # --- Core Handlers ---
     def update_image(self, cv_img):
         try:
@@ -1952,17 +2021,30 @@ class MainWindow(QMainWindow):
                 self.thread.wait()
         event.accept()
 
-    def identify_user(self):
+    def identify_user(self, semester_filter=None):
         db = SessionLocal()
         try:
-            # Fix #1: Scan only students in the teacher's own department
-            # This prevents false matches against staff/admins and improves speed
-            dept_id = getattr(self.current_user, 'department_id', None)
-            all_users = crud.get_all_users(db, role='student')
-            if dept_id:
-                users = [u for u in all_users if u.department_id == dept_id]
-            else:
-                users = all_users
+            # Base query: only students
+            query = db.query(models.User).filter(models.User.role == 'student')
+            
+            # Apply strict filtering ONLY if we are in an active class session
+            # This ensures the monitor is clean, but Enrollment/Kiosk remains global
+            if semester_filter is not None:
+                dept_id = getattr(self.current_user, 'department_id', None)
+                if dept_id:
+                    query = query.filter(models.User.department_id == dept_id)
+                
+                # Normalize semester to int for safety
+                try:
+                    s_int = int(semester_filter)
+                    if s_int > 0:
+                        query = query.filter(models.User.semester == s_int)
+                except (ValueError, TypeError):
+                    pass
+            
+            users = query.all()
+            if semester_filter:
+                print(f"[DEBUG] Identification: Scanning {len(users)} students for Semester {semester_filter}")
 
             best_match = None; min_dist = 0.8
             for user in users:
@@ -1991,57 +2073,93 @@ class MainWindow(QMainWindow):
             
         return best_match, min_dist
 
-    def add_to_live_monitor(self, user_data, box):
-        if not (self.current_user.role == 'teacher' and hasattr(self, 'monitor_table')):
+    def _remove_from_absent_table(self, enroll):
+        if not hasattr(self, 'absent_table'):
             return
+        for i in range(self.absent_table.rowCount()):
+            item = self.absent_table.item(i, 0)
+            if item and item.text().strip().lower() == enroll:
+                self.absent_table.removeRow(i)
+                break
 
-        # 1. Remove from Absent Table if present
-        if hasattr(self, 'absent_table'):
-            for i in range(self.absent_table.rowCount()):
-                item = self.absent_table.item(i, 0)
-                if item and item.text() == user_data['enrollment']:
-                    self.absent_table.removeRow(i)
-                    break
-
-        # 2. Duplicate Check for Present Table
+    def _is_monitor_duplicate(self, enroll):
         for i in range(self.monitor_table.rowCount()):
             item = self.monitor_table.item(i, 1)
-            if item and item.text() == user_data['enrollment']:
-                return
+            if item and item.text().strip().lower() == enroll:
+                return True
+        return False
+
+    def _get_face_crop_icon(self, box):
+        if not (hasattr(self, 'thread') and hasattr(self.thread, 'current_cv_img') and self.thread.isRunning()):
+            return None
+        try:
+            import cv2
+            from PyQt6.QtGui import QImage, QIcon, QPixmap
+            face_img = self.thread.current_cv_img.copy()
+            if box is not None:
+                x1, y1, x2, y2 = [int(b) for b in box]
+                h, w = face_img.shape[:2]
+                x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+                crop = face_img[y1:y2, x1:x2]
+                rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
+                return QIcon(QPixmap.fromImage(q_img))
+        except Exception as e:
+            print(f"Crop Error: {e}")
+        return None
+
+    def add_to_live_monitor(self, user_data, box):
+        if not (self.current_user.role in ['teacher', 'hod'] and hasattr(self, 'monitor_table')):
+            return
+
+        # Normalize enrollment for robust duplicate check
+        enroll = str(user_data.get('enrollment', '')).strip().lower()
+
+        self._remove_from_absent_table(enroll)
+        
+        if self._is_monitor_duplicate(enroll):
+            return
 
         # Insert at the top for better visibility
         row = 0
         self.monitor_table.insertRow(row)
         
-        # Face Crop Logic
-        if hasattr(self.thread, 'current_cv_img') and self.thread.isRunning():
-            try:
-                face_img = self.thread.current_cv_img.copy()
-                if box is not None:
-                    x1, y1, x2, y2 = [int(b) for b in box]
-                    h, w = face_img.shape[:2]
-                    x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
-                    crop = face_img[y1:y2, x1:x2]
-                    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-                    q_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
-                    self.monitor_table.setItem(row, 0, QTableWidgetItem(QIcon(QPixmap.fromImage(q_img)), ""))
-            except Exception as e:
-                print(f"Crop Error: {e}")
-
+        from PyQt6.QtGui import QColor
+        from PyQt6.QtWidgets import QTableWidgetItem
         import time
-        self.monitor_table.setItem(row, 1, QTableWidgetItem(user_data['enrollment']))
-        self.monitor_table.setItem(row, 2, QTableWidgetItem(user_data['name']))
-        self.monitor_table.setItem(row, 3, QTableWidgetItem(time.strftime("%H:%M:%S")))
-        self.monitor_table.setItem(row, 4, QTableWidgetItem("Present"))
+
+        # Face Crop Logic
+        icon = self._get_face_crop_icon(box)
+        item_img = QTableWidgetItem(icon, "") if icon else QTableWidgetItem("")
+        self.monitor_table.setItem(row, 0, item_img)
+
+        # Create items with Pure White text
+        items = [
+            QTableWidgetItem(user_data['enrollment']),
+            QTableWidgetItem(user_data['name']),
+            QTableWidgetItem(time.strftime("%H:%M:%S")),
+            QTableWidgetItem("Present")
+        ]
+
+        for idx, it in enumerate(items, start=1):
+            it.setForeground(QColor("#ffffff"))
+            self.monitor_table.setItem(row, idx, it)
 
     def mark_attendance(self, box=None):
-        best_match, min_dist = self.identify_user()
+        # 1. Get current session context
+        has_session = hasattr(self, 'active_session') and self.active_session is not None
+        sem = self.active_session.get("semester") if has_session else None
+        rid = self.active_session.get("routine_id") if has_session else None
+
+        # 2. Identify candidate (filtered by semester if in session)
+        best_match, min_dist = self.identify_user(semester_filter=sem)
         if not best_match: return
 
         db = SessionLocal()
         try:
-            rid = self.active_session.get("routine_id") if hasattr(self, 'active_session') and self.active_session else None
-            res = crud.mark_attendance(db, best_match["id"], "KIOSK_1", float(1.0 - min_dist), routine_id=rid)
+            # 3. Mark Attendance (Pass target_semester to lock identification to this class)
+            res = crud.mark_attendance(db, best_match["id"], "KIOSK_1", float(1.0 - min_dist), 
+                                       routine_id=rid, target_semester=sem)
             if res["status"] == "success":
                 self.last_mark_time = time.time()
                 self.show_notification(f"Attendance Marked for {best_match['name']}")
@@ -2163,6 +2281,10 @@ class MainWindow(QMainWindow):
                             seen_papers.add(p_label)
                 idx = self.r_paper.findText(current)
                 if idx >= 0: self.r_paper.setCurrentIndex(idx)
+
+            # Update Teacher's specific routine table if it exists
+            if hasattr(self, 'teacher_routine_table'):
+                self.refresh_teacher_routine()
         except Exception as e:
             print(f"Error refreshing routine: {e}")
         finally:
